@@ -4,10 +4,14 @@ IEC 62304 – Class B
 EEG Density Spectral Array Viewer
 """
 
-import sys
-
 import numpy as np
 from scipy.signal import welch
+import os, sys
+
+# fix lsl for single file .exe
+if getattr(sys, "frozen", False):
+    base = sys._MEIPASS if hasattr(sys, "_MEIPASS") else os.path.dirname(sys.executable)
+    os.environ["PYLSL_LIB"] = os.path.join(base, "pylsl", "lib", "lsl.dll")
 from pylsl import StreamInlet, resolve_byprop
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
@@ -20,7 +24,6 @@ import pyqtgraph as pg
 from pyqtgraph import ColorBarItem
 from datetime import datetime
 import datetime as dt
-from PySide6.QtCore import QDateTime
 
 
 class SystemConfig:
@@ -319,7 +322,7 @@ class EEGDSAApplication(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("EEG Density Spectral Array Viewer")
+        self.setWindowTitle("EEG Density Spectral Array")
 
         self.config = SystemConfig()
         self.stream = EEGStream()
