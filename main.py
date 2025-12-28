@@ -19,6 +19,7 @@ from PySide6.QtCore import QTimer
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem
 from datetime import datetime
+import datetime as dt
 from PySide6.QtCore import QDateTime
 
 
@@ -31,7 +32,7 @@ class SystemConfig:
     OVERLAP = 0.75
 
     PSD_DB_MIN = -40
-    PSD_DB_MAX = 5
+    PSD_DB_MAX = 10
     NO_DATA_VALUE = -10000.0
 
 class EEGStream:
@@ -52,12 +53,13 @@ class EEGStream:
             try:
                 timestamp, eeg_str = sample[0].split(",")
                 value = float(eeg_str)
-                dt = datetime.strptime(timestamp, "%H:%M:%S.%f")
-                timestamp_sec = dt.hour * 3600 + dt.minute * 60 + dt.second + dt.microsecond / 1e6
+                timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                timestamp_sec = timestamp.hour * 3600 + timestamp.minute * 60 + timestamp.second + timestamp.microsecond / 1e6
                 if np.isfinite(value):
-                    samples.append((timestamp_sec, value))
-            except Exception:
+                    samples.append((timestamp, value))
+            except Exception as e:
                 # Invalid sample discarded
+                print("Invalid sample: ",  e)
                 continue
 
         return samples
@@ -188,10 +190,10 @@ class DSAView(pg.GraphicsLayoutWidget):
         # Set pixel-to-axis mapping
         self.image.setRect(
             (
-                t0,                 # x
-                freq_bins[0],      # y
-                self.config.DISPLAY_MINUTES * 60 / self.config.UPDATE_STEP_SEC, # width
-                len(freq_bins) * df # height
+                t0.timestamp(),             # x
+                freq_bins[0],               # y
+                self.config.DISPLAY_MINUTES * 60, # width
+                len(freq_bins) * df         # height
             )
         )
 
@@ -211,7 +213,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self.image.setRect(
             (
-                self.t0,  # x
+                self.t0.timestamp(),  # x
                 self.freq_bins[0],  # y
                 self.config.DISPLAY_MINUTES*60,  # width
                 self.freq_bins[-1] - self.freq_bins[0]  # height
@@ -226,6 +228,31 @@ class DSAView(pg.GraphicsLayoutWidget):
             nan_policy="omit",
         )
 
+
+class PSDView(pg.PlotWidget):
+    def __init__(self, config: SystemConfig):
+        super().__init__()
+
+        self.config = config
+
+        self.setLabel("bottom", "Frequency", units="Hz")
+        self.setLabel("left", "Power Spectral Density", units="dB/Hz")
+        self.setMenuEnabled(False)
+        self.showGrid(x=True, y=True)
+
+        self.curve = self.plot(pen=pg.mkPen("y", width=2))
+        self.setInteractive(False)
+
+        self.setYRange(
+            self.config.PSD_DB_MIN-15,
+            self.config.PSD_DB_MAX+15
+        )
+
+    def update(self, freqs, psd_db):
+        if freqs is None or psd_db is None:
+            return
+
+        self.curve.setData(freqs, psd_db)
 
 class ConfigWidget(QGroupBox):
     def __init__(self, config: SystemConfig, on_apply_callback):
@@ -247,6 +274,9 @@ class ConfigWidget(QGroupBox):
         self.display_min = QLineEdit(str(config.DISPLAY_MINUTES))
         #self.display_min.setValidator(QIntValidator(10, 600))
 
+        self.min_db = QLineEdit(str(config.PSD_DB_MIN))
+        self.max_db = QLineEdit(str(config.PSD_DB_MAX))
+
         self.max_freq = QLineEdit(str(config.MAX_FREQ_HZ))
         #self.max_freq.setValidator(QIntValidator(1, 200))
 
@@ -257,6 +287,8 @@ class ConfigWidget(QGroupBox):
         layout.addRow("Window Length (s)", self.window_sec)
         layout.addRow("Step Size (s)", self.UPDATE_STEP_SEC)
         layout.addRow("Display Time (min)", self.display_min)
+        layout.addRow("Min Power (dB)", self.min_db)
+        layout.addRow("Max Power (dB)", self.max_db)
         layout.addRow("Max Frequency (Hz)", self.max_freq)
         layout.addRow(apply_btn)
 
@@ -264,9 +296,10 @@ class ConfigWidget(QGroupBox):
         try:
             self.config.OVERLAP = float(self.overlap.text())
             self.config.WINDOW_SEC = float(self.window_sec.text())
-            print(self.UPDATE_STEP_SEC.text())
             self.config.UPDATE_STEP_SEC = float(self.UPDATE_STEP_SEC.text())
             self.config.DISPLAY_MINUTES = int(self.display_min.text())
+            self.config.PSD_DB_MIN = int(self.min_db.text())
+            self.config.PSD_DB_MAX = int(self.max_db.text())
             self.config.MAX_FREQ_HZ = int(self.max_freq.text())
 
             if self.config.UPDATE_STEP_SEC >= self.config.WINDOW_SEC:
@@ -295,6 +328,7 @@ class EEGDSAApplication(QMainWindow):
         self.buffer = []
 
         self.view = DSAView(self.config)
+        self.psd_view = PSDView(self.config)
 
         self.config_widget = ConfigWidget(
             self.config,
@@ -305,6 +339,7 @@ class EEGDSAApplication(QMainWindow):
         layout = QVBoxLayout(container)
         layout.addWidget(self.config_widget)
         layout.addWidget(self.view)
+        layout.addWidget(self.psd_view)
         self.setCentralWidget(container)
 
         self.timer = QTimer()
@@ -325,7 +360,7 @@ class EEGDSAApplication(QMainWindow):
         window_sec = self.config.WINDOW_SEC
 
         # Determine the current window
-        window_start = last_time - window_sec
+        window_start = last_time - dt.timedelta(seconds=window_sec)
         window_end = last_time
 
         # Select samples inside the current window
@@ -342,6 +377,7 @@ class EEGDSAApplication(QMainWindow):
             self.view.initialize(f, self.buffer[0][0])
 
         self.view.update(psd_db, last_time)
+        self.psd_view.update(f, psd_db)
 
     def _apply_new_config(self):
         self.timer.stop()
