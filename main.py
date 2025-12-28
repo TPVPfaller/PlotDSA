@@ -1,117 +1,367 @@
+"""
+IEC 62304 – Class B
+
+EEG Density Spectral Array Viewer
+"""
+
 import sys
+
 import numpy as np
-from datetime import datetime
-from scipy.signal import spectrogram
+from scipy.signal import welch
 from pylsl import StreamInlet, resolve_byprop
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
-from PyQt6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFormLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox
+)
+from PySide6.QtCore import QTimer
 
 import pyqtgraph as pg
-
-# -------------------------
-# Settings
-# -------------------------
-SAMPLE_RATE = 400   # Hz
-WINDOW_SEC = 2      # 2 seconds window
-STEP_SEC = 0.25     # update every 250 ms
-
-WINDOW_SAMPLES = int(WINDOW_SEC * SAMPLE_RATE)
-STEP_SAMPLES = int(STEP_SEC * SAMPLE_RATE)
+from pyqtgraph import ColorBarItem
+from datetime import datetime
+from PySide6.QtCore import QDateTime
 
 
-def time_to_seconds(t_str):
-    dt = datetime.strptime(t_str, "%H:%M:%S.%f")
-    return dt.hour * 3600 + dt.minute * 60 + dt.second + dt.microsecond / 1e6
+class SystemConfig:
+    SAMPLE_RATE_HZ = 400
+    WINDOW_SEC = 4.0
+    UPDATE_STEP_SEC = 0.25
+    DISPLAY_MINUTES = 2
+    MAX_FREQ_HZ = 40
+    OVERLAP = 0.75
 
+    PSD_DB_MIN = -40
+    PSD_DB_MAX = 5
+    NO_DATA_VALUE = -10000.0
 
-class EEGWindow(QMainWindow):
+class EEGStream:
     def __init__(self):
-        super().__init__()
-
-        self.setWindowTitle("Realtime EEG Density Spectral Array (DSA)")
-        self.resize(900, 600)
-
-        # -------------------------
-        # GUI Layout
-        # -------------------------
-        container = QWidget()
-        layout = QVBoxLayout()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
-
-        # PyQtGraph ImageView for DSA
-        self.img = pg.ImageView()
-        self.img.ui.roiBtn.hide()
-        self.img.ui.menuBtn.hide()
-        layout.addWidget(self.img)
-
-        # -------------------------
-        # LSL Setup
-        # -------------------------
-        print("Resolving LSL stream...")
         streams = resolve_byprop("name", "EEG_DATA")
-        self.inlet = StreamInlet(streams[0])
+        if not streams:
+            raise RuntimeError("EEG stream not found")
 
-        self.buffer = []
+        self._inlet = StreamInlet(streams[0])
 
-        # -------------------------
-        # Timer for updates
-        # -------------------------
-        self.timer = QTimer()
-        self.timer.setInterval(int(STEP_SEC * 1000))  # ms
-        self.timer.timeout.connect(self.update_data)
-        self.timer.start()
-
-    def update_data(self):
-        # Pull all available samples
+    def read_samples(self):
+        samples = []
         while True:
-            sample = self.inlet.pull_sample(timeout=0)[0]
+            sample, _ = self._inlet.pull_sample(timeout=0)
             if sample is None:
                 break
 
-            timestamp_str, eeg_str = sample[0].split(",")
-            eeg_value = float(eeg_str) * 10
-            self.buffer.append(eeg_value)
+            try:
+                timestamp, eeg_str = sample[0].split(",")
+                value = float(eeg_str)
+                dt = datetime.strptime(timestamp, "%H:%M:%S.%f")
+                timestamp_sec = dt.hour * 3600 + dt.minute * 60 + dt.second + dt.microsecond / 1e6
+                if np.isfinite(value):
+                    samples.append((timestamp_sec, value))
+            except Exception:
+                # Invalid sample discarded
+                continue
 
-        # Keep buffer bounded
-        if len(self.buffer) > WINDOW_SAMPLES:
-            self.buffer = self.buffer[-WINDOW_SAMPLES:]
+        return samples
 
-        # Need enough data for FFT
-        if len(self.buffer) < WINDOW_SAMPLES:
+
+class DSACalculator:
+
+    def __init__(self, config: SystemConfig):
+        self.config = config
+        self.window_samples = int(
+            config.WINDOW_SEC * config.SAMPLE_RATE_HZ
+        )
+
+        # Standard Welch choice for EEG
+        self.nperseg = self.window_samples
+        self.noverlap = self.window_samples // 2
+
+    def compute_psd_column(self, eeg_buffer):
+        if len(eeg_buffer) < self.window_samples:
+            return None, None
+
+        f, psd = welch(
+            eeg_buffer,
+            fs=self.config.SAMPLE_RATE_HZ,
+            window="hann",
+            nperseg=int(self.config.SAMPLE_RATE_HZ * self.config.WINDOW_SEC),
+            noverlap=int(0.75 * self.nperseg),
+            scaling="density",
+            detrend="constant",
+            average="mean"
+        )
+
+        mask = f <= self.config.MAX_FREQ_HZ
+        f = f[mask]
+        psd = psd[mask]
+
+        # Romagnoli et al. (2024). Non-invasive technology for brain monitoring: definition and meaning of the principal
+        # parameters for the International PRactice On TEChnology neuro-moniToring group (I-PROTECT).
+        # Journal of Clinical Monitoring and Computing. 38. 1-19. 10.1007/s10877-024-01146-1.
+        psd_db = 10.0 * np.log10(psd + 1e-12)
+
+        return f, psd_db
+
+class DSAView(pg.GraphicsLayoutWidget):
+    def __init__(self, config: SystemConfig):
+        super().__init__()
+
+        self.config = config
+
+        # --- Layout ---
+        self.time_axis = pg.DateAxisItem("bottom")
+        self.plot = self.addPlot(row=0, col=0, axisItems={"bottom": self.time_axis})
+        self.plot.setLabel("bottom", "Time")
+        self.plot.setLabel("left", "Frequency", units="Hz")
+        self.plot.setMenuEnabled(False)
+        self.plot.showGrid(x=False, y=False)
+        self.plot.invertY(False)
+
+        self.setInteractive(False)
+
+        self.image = pg.ImageItem()
+        self.plot.addItem(self.image)
+
+        # --- Colormap ---
+        self._init_colormap()
+
+        # --- Colorbar (SEPARATE COLUMN) ---
+        self.colorbar = ColorBarItem(
+            values=(self.config.PSD_DB_MIN, self.config.PSD_DB_MAX),
+            colorMap=self.cmap,
+            label="Power / Frequency (dB/Hz)",
+            interactive=False,
+        )
+        self.colorbar.setImageItem(self.image)
+
+        self.addItem(self.colorbar, row=0, col=1)
+
+        # Column sizing
+        self.ci.layout.setColumnStretchFactor(0, 10)
+        self.ci.layout.setColumnStretchFactor(1, 1)
+
+        self.dsa = None
+
+    def _init_colormap(self):
+        colors = [
+            (36, 24, 111),
+            (0, 0, 128),
+            (0, 128, 255),
+            (0, 255, 0),
+            (255, 255, 0),
+            (255, 0, 0),
+        ]
+
+        pos = np.linspace(0.0, 1.0, len(colors))
+        self.cmap = pg.ColorMap(pos, colors)
+
+        self.lut = self.cmap.getLookupTable(nPts=256, mode="byte")
+
+        self.image.setLookupTable(self.lut)
+
+    def initialize(self, freq_bins, t0):
+        self.freq_bins = freq_bins
+
+        self.time_bins = int(
+            self.config.DISPLAY_MINUTES*60 / self.config.UPDATE_STEP_SEC
+        )
+
+        # Internal buffer: time x frequency
+        self.dsa = np.full((self.time_bins, len(freq_bins)), np.nan)
+        self.write_index = 0
+
+        self.t0 = t0
+
+        dt = self.config.UPDATE_STEP_SEC
+        df = freq_bins[1] - freq_bins[0]
+
+        # Image is (freq, time) when displayed
+        self.image.setImage(
+            self.dsa,
+            autoLevels=False
+        )
+
+        self.image.setLevels((
+            self.config.PSD_DB_MIN,
+            self.config.PSD_DB_MAX
+        ))
+
+        # Set pixel-to-axis mapping
+        self.image.setRect(
+            (
+                t0,                 # x
+                freq_bins[0],      # y
+                self.config.DISPLAY_MINUTES * 60 / self.config.UPDATE_STEP_SEC, # width
+                len(freq_bins) * df # height
+            )
+        )
+
+    def update(self, psd_column, timestamp):
+        psd_column = np.asarray(psd_column)
+        psd_column[~np.isfinite(psd_column)] = np.nan
+        if self.write_index < self.time_bins:
+            # Fill from left to right (startup phase)
+            self.dsa[self.write_index, :] = psd_column
+            self.write_index += 1
+        else:
+            # Scroll left once full
+            self.dsa[:-1, :] = self.dsa[1:, :]
+            self.dsa[-1, :] = psd_column
+
+            self.t0 += self.config.UPDATE_STEP_SEC
+
+        self.image.setRect(
+            (
+                self.t0,  # x
+                self.freq_bins[0],  # y
+                self.config.DISPLAY_MINUTES*60,  # width
+                self.freq_bins[-1] - self.freq_bins[0]  # height
+            )
+        )
+
+        self.image.setImage(
+            self.dsa,
+            autoLevels=False,
+            levels=(self.config.PSD_DB_MIN, self.config.PSD_DB_MAX),
+            lut=self.cmap.getLookupTable(),
+            nan_policy="omit",
+        )
+
+
+class ConfigWidget(QGroupBox):
+    def __init__(self, config: SystemConfig, on_apply_callback):
+        super().__init__("System Configuration")
+
+        self.config = config
+        self.on_apply_callback = on_apply_callback
+
+        layout = QFormLayout(self)
+
+        self.overlap = QLineEdit(str(config.OVERLAP))
+
+        self.window_sec = QLineEdit(str(config.WINDOW_SEC))
+        #self.window_sec.setValidator(QDoubleValidator(0.5, 10.0, 2))
+
+        self.UPDATE_STEP_SEC = QLineEdit(str(config.UPDATE_STEP_SEC))
+        #self.UPDATE_STEP_SEC.setValidator(QDoubleValidator(0.05, 5.0, 2))
+
+        self.display_min = QLineEdit(str(config.DISPLAY_MINUTES))
+        #self.display_min.setValidator(QIntValidator(10, 600))
+
+        self.max_freq = QLineEdit(str(config.MAX_FREQ_HZ))
+        #self.max_freq.setValidator(QIntValidator(1, 200))
+
+        apply_btn = QPushButton("Apply")
+        apply_btn.clicked.connect(self._apply)
+
+        layout.addRow("Overlap", self.overlap)
+        layout.addRow("Window Length (s)", self.window_sec)
+        layout.addRow("Step Size (s)", self.UPDATE_STEP_SEC)
+        layout.addRow("Display Time (min)", self.display_min)
+        layout.addRow("Max Frequency (Hz)", self.max_freq)
+        layout.addRow(apply_btn)
+
+    def _apply(self):
+        try:
+            self.config.OVERLAP = float(self.overlap.text())
+            self.config.WINDOW_SEC = float(self.window_sec.text())
+            print(self.UPDATE_STEP_SEC.text())
+            self.config.UPDATE_STEP_SEC = float(self.UPDATE_STEP_SEC.text())
+            self.config.DISPLAY_MINUTES = int(self.display_min.text())
+            self.config.MAX_FREQ_HZ = int(self.max_freq.text())
+
+            if self.config.UPDATE_STEP_SEC >= self.config.WINDOW_SEC:
+                raise ValueError("Step size must be smaller than window size")
+
+            self.on_apply_callback()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Invalid Configuration",
+                str(e)
+            )
+
+class EEGDSAApplication(QMainWindow):
+
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("EEG Density Spectral Array Viewer")
+
+        self.config = SystemConfig()
+        self.stream = EEGStream()
+
+        self.processor = DSACalculator(self.config)
+        self.buffer = []
+
+        self.view = DSAView(self.config)
+
+        self.config_widget = ConfigWidget(
+            self.config,
+            self._apply_new_config
+        )
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(self.config_widget)
+        layout.addWidget(self.view)
+        self.setCentralWidget(container)
+
+        self.timer = QTimer()
+        self._update_timer()
+        self.timer.timeout.connect(self._update_cycle)
+        self.timer.start()
+
+    def _update_cycle(self):
+        new_samples = self.stream.read_samples()
+        self.buffer.extend(new_samples)  # buffer: list of (timestamp_sec, value)
+
+        if not self.buffer:
             return
 
-        # Convert to numpy
-        data = np.array(self.buffer[-WINDOW_SAMPLES:])
+        # Use first timestamp as reference
+        last_time = self.buffer[-1][0]
 
-        # Compute DSA
-        f, t, Sxx = spectrogram(
-            data,
-            fs=SAMPLE_RATE,
-            nperseg=WINDOW_SAMPLES // 2,
-            noverlap=WINDOW_SAMPLES // 2 - STEP_SAMPLES,
-            scaling="density",
-            mode="psd"
+        window_sec = self.config.WINDOW_SEC
+
+        # Determine the current window
+        window_start = last_time - window_sec
+        window_end = last_time
+
+        # Select samples inside the current window
+        window_samples = [v for t, v in self.buffer if window_start <= t <= window_end]
+
+        # Remove old samples (older than the last full window)
+        self.buffer = [s for s in self.buffer if s[0] >= window_start]
+
+        f, psd_db = self.processor.compute_psd_column(np.array(window_samples))
+        if psd_db is None:
+            return
+
+        if self.view.dsa is None:
+            self.view.initialize(f, self.buffer[0][0])
+
+        self.view.update(psd_db, last_time)
+
+    def _apply_new_config(self):
+        self.timer.stop()
+
+        self.processor = DSACalculator(self.config)
+        self.buffer.clear()
+        self.view.dsa = None
+
+        self._update_timer()
+
+        self.timer.start()
+
+    def _update_timer(self):
+        self.timer.setInterval(
+            int(self.config.UPDATE_STEP_SEC * 1000)
         )
-
-        # Convert to dB
-        Sxx_db = 10 * np.log10(Sxx + 1e-12)
-
-        # Display image
-        self.img.setImage(
-            Sxx_db,
-            autoLevels=True,
-            xvals=t
-        )
-        self.img.setPredefinedGradient("viridis")
-        self.img.setColorMap(pg.colormap.get("viridis"))
-
-
 
 def main():
     app = QApplication(sys.argv)
-    win = EEGWindow()
+    win = EEGDSAApplication()
     win.show()
     sys.exit(app.exec())
 
