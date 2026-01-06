@@ -5,106 +5,20 @@ EEG Density Spectral Array Viewer
 """
 
 import numpy as np
-from scipy.signal import welch
-import os, sys
-
-# fix lsl for single file .exe
-if getattr(sys, "frozen", False):
-    base = sys._MEIPASS if hasattr(sys, "_MEIPASS") else os.path.dirname(sys.executable)
-    os.environ["PYLSL_LIB"] = os.path.join(base, "pylsl", "lib", "lsl.dll")
-from pylsl import StreamInlet, resolve_byprop
+import sys
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
-from PySide6.QtWidgets import (
-    QFormLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox
-)
+
 from PySide6.QtCore import QTimer
 
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem
-from datetime import datetime
 import datetime as dt
 
+from config import SystemConfig, ConfigWidget
+from data import EEGStream
+from calculations import DSACalculator
 
-class SystemConfig:
-    SAMPLE_RATE_HZ = 400
-    WINDOW_SEC = 4.0
-    UPDATE_STEP_SEC = 0.25
-    DISPLAY_MINUTES = 2
-    MAX_FREQ_HZ = 40
-    OVERLAP = 0.75
-
-    PSD_DB_MIN = -40
-    PSD_DB_MAX = 10
-    NO_DATA_VALUE = -10000.0
-
-class EEGStream:
-    def __init__(self):
-        streams = resolve_byprop("name", "EEG_DATA")
-        if not streams:
-            raise RuntimeError("EEG stream not found")
-
-        self._inlet = StreamInlet(streams[0])
-
-    def read_samples(self):
-        samples = []
-        while True:
-            sample, _ = self._inlet.pull_sample(timeout=0)
-            if sample is None:
-                break
-
-            try:
-                timestamp, eeg_str = sample[0].split(",")
-                value = float(eeg_str)
-                timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
-                timestamp_sec = timestamp.hour * 3600 + timestamp.minute * 60 + timestamp.second + timestamp.microsecond / 1e6
-                if np.isfinite(value):
-                    samples.append((timestamp, value))
-            except Exception as e:
-                # Invalid sample discarded
-                print("Invalid sample: ",  e)
-                continue
-
-        return samples
-
-
-class DSACalculator:
-
-    def __init__(self, config: SystemConfig):
-        self.config = config
-        self.window_samples = int(
-            config.WINDOW_SEC * config.SAMPLE_RATE_HZ
-        )
-
-        # Standard Welch choice for EEG
-        self.nperseg = self.window_samples
-        self.noverlap = self.window_samples // 2
-
-    def compute_psd_column(self, eeg_buffer):
-        if len(eeg_buffer) < self.window_samples:
-            return None, None
-
-        f, psd = welch(
-            eeg_buffer,
-            fs=self.config.SAMPLE_RATE_HZ,
-            window="hann",
-            nperseg=int(self.config.SAMPLE_RATE_HZ * self.config.WINDOW_SEC),
-            noverlap=int(0.75 * self.nperseg),
-            scaling="density",
-            detrend="constant",
-            average="mean"
-        )
-
-        mask = f <= self.config.MAX_FREQ_HZ
-        f = f[mask]
-        psd = psd[mask]
-
-        # Romagnoli et al. (2024). Non-invasive technology for brain monitoring: definition and meaning of the principal
-        # parameters for the International PRactice On TEChnology neuro-moniToring group (I-PROTECT).
-        # Journal of Clinical Monitoring and Computing. 38. 1-19. 10.1007/s10877-024-01146-1.
-        psd_db = 10.0 * np.log10(psd + 1e-12)
-
-        return f, psd_db
 
 class DSAView(pg.GraphicsLayoutWidget):
     def __init__(self, config: SystemConfig):
@@ -129,7 +43,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         # --- Colormap ---
         self._init_colormap()
 
-        # --- Colorbar (SEPARATE COLUMN) ---
+        # --- Colorbar ---
         self.colorbar = ColorBarItem(
             values=(self.config.PSD_DB_MIN, self.config.PSD_DB_MAX),
             colorMap=self.cmap,
@@ -140,7 +54,6 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self.addItem(self.colorbar, row=0, col=1)
 
-        # Column sizing
         self.ci.layout.setColumnStretchFactor(0, 10)
         self.ci.layout.setColumnStretchFactor(1, 1)
 
@@ -257,66 +170,6 @@ class PSDView(pg.PlotWidget):
 
         self.curve.setData(freqs, psd_db)
 
-class ConfigWidget(QGroupBox):
-    def __init__(self, config: SystemConfig, on_apply_callback):
-        super().__init__("System Configuration")
-
-        self.config = config
-        self.on_apply_callback = on_apply_callback
-
-        layout = QFormLayout(self)
-
-        self.overlap = QLineEdit(str(config.OVERLAP))
-
-        self.window_sec = QLineEdit(str(config.WINDOW_SEC))
-        #self.window_sec.setValidator(QDoubleValidator(0.5, 10.0, 2))
-
-        self.UPDATE_STEP_SEC = QLineEdit(str(config.UPDATE_STEP_SEC))
-        #self.UPDATE_STEP_SEC.setValidator(QDoubleValidator(0.05, 5.0, 2))
-
-        self.display_min = QLineEdit(str(config.DISPLAY_MINUTES))
-        #self.display_min.setValidator(QIntValidator(10, 600))
-
-        self.min_db = QLineEdit(str(config.PSD_DB_MIN))
-        self.max_db = QLineEdit(str(config.PSD_DB_MAX))
-
-        self.max_freq = QLineEdit(str(config.MAX_FREQ_HZ))
-        #self.max_freq.setValidator(QIntValidator(1, 200))
-
-        apply_btn = QPushButton("Apply")
-        apply_btn.clicked.connect(self._apply)
-
-        layout.addRow("Overlap", self.overlap)
-        layout.addRow("Window Length (s)", self.window_sec)
-        layout.addRow("Step Size (s)", self.UPDATE_STEP_SEC)
-        layout.addRow("Display Time (min)", self.display_min)
-        layout.addRow("Min Power (dB)", self.min_db)
-        layout.addRow("Max Power (dB)", self.max_db)
-        layout.addRow("Max Frequency (Hz)", self.max_freq)
-        layout.addRow(apply_btn)
-
-    def _apply(self):
-        try:
-            self.config.OVERLAP = float(self.overlap.text())
-            self.config.WINDOW_SEC = float(self.window_sec.text())
-            self.config.UPDATE_STEP_SEC = float(self.UPDATE_STEP_SEC.text())
-            self.config.DISPLAY_MINUTES = int(self.display_min.text())
-            self.config.PSD_DB_MIN = int(self.min_db.text())
-            self.config.PSD_DB_MAX = int(self.max_db.text())
-            self.config.MAX_FREQ_HZ = int(self.max_freq.text())
-
-            if self.config.UPDATE_STEP_SEC >= self.config.WINDOW_SEC:
-                raise ValueError("Step size must be smaller than window size")
-
-            self.on_apply_callback()
-
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Invalid Configuration",
-                str(e)
-            )
-
 class EEGDSAApplication(QMainWindow):
 
     def __init__(self):
@@ -357,7 +210,6 @@ class EEGDSAApplication(QMainWindow):
         if not self.buffer:
             return
 
-        # Use first timestamp as reference
         last_time = self.buffer[-1][0]
 
         window_sec = self.config.WINDOW_SEC
