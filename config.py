@@ -5,15 +5,22 @@ from PySide6.QtWidgets import (
 
 class SystemConfig:
     SAMPLE_RATE_HZ = 400
-    WINDOW_SEC = 4.0
-    UPDATE_STEP_SEC = 0.25
-    DISPLAY_MINUTES = 2
+    UPDATE_STEP_SEC = 0.5
+    NO_DATA_VALUE = -10000.0
+
+    # to observe a frequency reliably: window >= 1/(frequency resolution)
+    WINDOW_SEC = 2.0
+    SEGMENT_SEC = 2.0
+    DISPLAY_MINUTES = 2.0
+    DISPLAY_MINUTES_BOUNDS = (1.0, 600)
     MAX_FREQ_HZ = 40
+    MAX_FREQ_HZ_BOUNDS = (20, 50)
+    # Percentage of overlap
     OVERLAP = 0.75
 
     PSD_DB_MIN = -40
     PSD_DB_MAX = 10
-    NO_DATA_VALUE = -10000.0
+
 
 
 class ConfigWidget(QGroupBox):
@@ -30,7 +37,7 @@ class ConfigWidget(QGroupBox):
         self.window_sec = QLineEdit(str(config.WINDOW_SEC))
         #self.window_sec.setValidator(QDoubleValidator(0.5, 10.0, 2))
 
-        self.UPDATE_STEP_SEC = QLineEdit(str(config.UPDATE_STEP_SEC))
+        self.segment_sec = QLineEdit(str(config.SEGMENT_SEC))
         #self.UPDATE_STEP_SEC.setValidator(QDoubleValidator(0.05, 5.0, 2))
 
         self.display_min = QLineEdit(str(config.DISPLAY_MINUTES))
@@ -47,8 +54,8 @@ class ConfigWidget(QGroupBox):
 
         layout.addRow("Overlap", self.overlap)
         layout.addRow("Window Length (s)", self.window_sec)
-        layout.addRow("Step Size (s)", self.UPDATE_STEP_SEC)
-        layout.addRow("Display Time (min)", self.display_min)
+        layout.addRow("Segment Length (s)", self.segment_sec)
+        layout.addRow("Display Time (minutes)", self.display_min)
         layout.addRow("Min Power (dB)", self.min_db)
         layout.addRow("Max Power (dB)", self.max_db)
         layout.addRow("Max Frequency (Hz)", self.max_freq)
@@ -58,8 +65,8 @@ class ConfigWidget(QGroupBox):
         try:
             self.config.OVERLAP = float(self.overlap.text())
             self.config.WINDOW_SEC = float(self.window_sec.text())
-            self.config.UPDATE_STEP_SEC = float(self.UPDATE_STEP_SEC.text())
-            self.config.DISPLAY_MINUTES = int(self.display_min.text())
+            self.config.SEGMENT_SEC = float(self.segment_sec.text())
+            self.config.DISPLAY_MINUTES = float(self.display_min.text())
             self.config.PSD_DB_MIN = int(self.min_db.text())
             self.config.PSD_DB_MAX = int(self.max_db.text())
             self.config.MAX_FREQ_HZ = int(self.max_freq.text())
