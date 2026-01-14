@@ -26,10 +26,10 @@ class DSACalculator:
             return_onesided=True,
         )
 
-        mask = f <= config.MAX_FREQ_HZ_BOUNDS[1]
+        mask = (f >= config.LOWEST_FREQ_HZ) & (f <= config.MAX_FREQ_HZ_BOUNDS[1])
         f = f[mask]
         psd = psd[mask]
-        print(f)
+
         # convert to db
         # Romagnoli et al. (2024). Non-invasive technology for brain monitoring: definition and meaning of the principal
         # parameters for the International PRactice On TEChnology neuro-moniToring group (I-PROTECT).

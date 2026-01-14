@@ -1,3 +1,4 @@
+from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QFormLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox
 )
@@ -6,17 +7,20 @@ from PySide6.QtWidgets import (
 class SystemConfig:
     SAMPLE_RATE_HZ = 400
     UPDATE_STEP_SEC = 0.5
+    INTERVAL = 1.1
     NO_DATA_VALUE = -10000.0
+    LOWEST_FREQ_HZ = 0.1 # Viktor Bublitz et. al. Electroencephalogram-based prediction and detection of responsiveness
+                         # to noxious stimulation in critical care patients: a retrospective single-centre analysis
 
     # to observe a frequency reliably: window >= 1/(frequency resolution)
     WINDOW_SEC = 2.0
     SEGMENT_SEC = 2.0
     DISPLAY_MINUTES = 2.0
-    DISPLAY_MINUTES_BOUNDS = (1.0, 600)
+    DISPLAY_MINUTES_BOUNDS = (0.5, 360.0)
     MAX_FREQ_HZ = 40
     MAX_FREQ_HZ_BOUNDS = (20, 50)
     # Percentage of overlap
-    OVERLAP = 0.75
+    OVERLAP = 0.5
 
     PSD_DB_MIN = -40
     PSD_DB_MAX = 10
@@ -41,7 +45,6 @@ class ConfigWidget(QGroupBox):
         #self.UPDATE_STEP_SEC.setValidator(QDoubleValidator(0.05, 5.0, 2))
 
         self.display_min = QLineEdit(str(config.DISPLAY_MINUTES))
-        #self.display_min.setValidator(QIntValidator(10, 600))
 
         self.min_db = QLineEdit(str(config.PSD_DB_MIN))
         self.max_db = QLineEdit(str(config.PSD_DB_MAX))

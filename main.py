@@ -26,8 +26,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         super().__init__()
 
         self.config = config
-        width = int(self.config.DISPLAY_MINUTES * 60 / self.config.UPDATE_STEP_SEC)
-        self.t0 = datetime.datetime.now().timestamp()
 
         # --- Layout ---
         self.time_axis = pg.DateAxisItem("bottom")
@@ -39,7 +37,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.invertY(False)
 
         self.setInteractive(False)
-        self.dsa_view = None
         self.image = pg.ImageItem()
         self.plot.addItem(self.image)
 
@@ -54,34 +51,27 @@ class DSAView(pg.GraphicsLayoutWidget):
             interactive=False,
         )
         self.colorbar.setImageItem(self.image)
-
         self.addItem(self.colorbar, row=0, col=1)
 
         self.ci.layout.setColumnStretchFactor(0, 10)
         self.ci.layout.setColumnStretchFactor(1, 1)
 
-        self.dsa_buffer = DSABuffer(config)
+        #self.dsa_buffer = DSABuffer(config)
 
+        self.t0 = datetime.datetime.now().timestamp()
         nperseg = int(self.config.SEGMENT_SEC * self.config.SAMPLE_RATE_HZ)
-        self.freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / self.config.SAMPLE_RATE_HZ)
+        freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / self.config.SAMPLE_RATE_HZ)
+        mask = (freq_bins >= self.config.LOWEST_FREQ_HZ) & (freq_bins <= self.config.MAX_FREQ_HZ_BOUNDS[1])
+        self.n_freq_bins = len(freq_bins[mask])
+        self.n_time_bins = int(self.config.DISPLAY_MINUTES * 60.0 / self.config.WINDOW_SEC)
 
-        self.time_bins = int(self.config.DISPLAY_MINUTES * 60 / self.config.WINDOW_SEC)
-
-        # Internal buffer: time x frequency
-        self.time_bins = int(
-            (self.config.DISPLAY_MINUTES * 60) / self.config.UPDATE_STEP_SEC
-        )
-
-        self.dsa_view = np.full((self.time_bins, len(self.freq_bins)), np.nan, dtype=np.float32)
+        self.dsa_rect = np.full((self.n_time_bins, self.n_freq_bins), np.nan, dtype=np.float32)
 
         self.write_index = 0
 
-        self.t0 = datetime.datetime.now().timestamp()
-        print(self.t0)
-
         # Image is (freq, time) when displayed
         self.image.setImage(
-            self.dsa_view,
+            self.dsa_rect,
             autoLevels=False
         )
 
@@ -94,7 +84,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.image.setRect(
             (
                 self.t0,  # x
-                self.freq_bins[0],  # y
+                0.0,  # y
                 self.config.DISPLAY_MINUTES * 60,  # width
                 self.config.MAX_FREQ_HZ  # height
             )
@@ -118,14 +108,13 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.image.setLookupTable(self.lut)
 
     def update(self, dsa_buffer):
-        self.t0, self.dsa_view = dsa_buffer.get_view(
-            width=self.config.DISPLAY_MINUTES * 60,
-            height=self.config.MAX_FREQ_HZ,
-            num_time_bins=self.time_bins,
+        self.t0, self.dsa_rect = dsa_buffer.get_view(
+            width=int(self.config.DISPLAY_MINUTES * 60.0 / self.config.UPDATE_STEP_SEC),
+            height=self.n_freq_bins,
         )
 
         self.image.setImage(
-            self.dsa_view,
+            self.dsa_rect,
             autoLevels=False,
             levels=(self.config.PSD_DB_MIN, self.config.PSD_DB_MAX),
             lut=self.cmap.getLookupTable(),
@@ -135,104 +124,103 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.image.setRect(
             (
                 self.t0,  # x
-                self.freq_bins[0],  # y
+                0.0,  # y
                 self.config.DISPLAY_MINUTES*60,  # width
-                self.freq_bins[-1] - self.freq_bins[0]  # height
+                self.config.MAX_FREQ_HZ  # height
             )
         )
 
 
 
 class DSABuffer:
-    def __init__(self, config: SystemConfig, freq_bins=None):
+    def __init__(self, config: SystemConfig):
         self.config = config
-        self.reset(freq_bins)
-        self._view_write_index = 0
-        self.write_index = 0
+        self.apply_config()
 
-    def append(self, timestamp, f, psd):
+        self.t0 = None
+        self.last_slot = 0
+        self.full = False
+
+    def append(self, ts, f, psd):
+
         if len(f) != len(self.freq_bins):
-            print("Frequency bins do not match. Resetting DSABuffer")
-            self.reset(f)
-        ts = timestamp.timestamp()
-        print(ts)
-        if not self.full:
-            self.timestamps.append(ts)
-            self.data.append(psd)
+            print("Frequency bins do not match. Resetting DSABuffer.")
+            self.apply_config()
+            return
 
-            if len(self.timestamps) == self.max_frames:
-                self.full = True
-                self.write_index = 0
+        if psd is None or len(psd)==0:
+            psd = np.full(len(self.freq_bins), np.nan, dtype=np.float32)
+
+        # Initialize time grid
+        if self.t0 is None:
+            self.t0 = ts
+            slot = 0
         else:
-            self.timestamps[self.write_index] = ts
-            self.data[self.write_index] = psd
-            self.write_index = (self.write_index + 1) % self.max_frames
+            slot = self._timestamp_to_slot(ts)
 
+        idx = slot % self.max_frames
+        #print("index")
+        #print(idx, ts)
 
-    def get_view(self, width, height, num_time_bins):
-        """
-        Returns a fixed-size DSA view (num_time_bins, n_freqs) for ImageItem.
-        Scrolls left→right. Handles buffer larger than view.
-        """
+        # Fill gaps with NaNs
+        if self.last_slot is not None and slot > self.last_slot + 1:
+            for s in range(self.last_slot + 1, slot):
+                self.data[s % self.max_frames] = np.nan
+                self.timestamps[s % self.max_frames] = self.t0 + s * self.time_delta
 
-        n_freqs = len(self.freq_bins)
+        # Store data
+        self.data[idx] = psd
+        self.timestamps[idx] = ts
 
-        # --- empty buffer ---
-        if len(self.data) == 0:
-            return datetime.datetime.now().timestamp(), np.full((num_time_bins, n_freqs), np.nan, dtype=np.float32)
+        # Mark buffer full if we wrapped
+        if self.last_slot is not None and slot - self.last_slot >= self.max_frames:
+            self.full = True
+        elif slot >= self.max_frames:
+            self.full = True
 
-        # --- ordered buffer (oldest → newest) ---
-        if not self.full:
-            dsa_buf = np.asarray(self.data)  # (Nbuf, F)
+        self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
+
+    def _timestamp_to_slot(self, ts):
+        return int(np.round((ts - self.t0) / self.time_delta))
+
+    def get_last_timestamp(self):
+        return self.timestamps[self.last_slot % self.max_frames]
+
+    def get_frame(self, width, height):
+        if self.t0 is None:
+            return datetime.datetime.now().timestamp(), np.empty((1, 0), dtype=np.float32)
+        height = min(height, self.data.shape[1])
+        width = min(width, self.max_frames)
+
+        slot_now = self.last_slot
+        if self.full:
+            slot_start = slot_now - width + 1
         else:
-            idx = self.write_index
-            dsa_buf = np.asarray(self.data[idx:] + self.data[:idx])
+            slot_start = max(0, slot_now - width + 1)
 
-        # --- apply frequency height ---
-        if height is not None:
-            height = min(height, dsa_buf.shape[1])
-            dsa_buf = dsa_buf[:, :height]
+        slots = np.arange(slot_start, slot_now+1)
+        idxs = slots % self.max_frames
 
-        n_buf, n_freqs = dsa_buf.shape
+        return self.timestamps[idxs[0]], self.data[idxs, :height]
 
-        # --- scale factor ---
-        scale = num_time_bins/width
+    def get_view(self, width, height):
+        dsa_view = np.full((width, height), np.nan, dtype=np.float32)
+        t0, frame = self.get_frame(width, height)
+        dsa_view[0:len(frame), 0:len(frame[0])] = frame
 
-        repeat = max(1, int(round(scale)))
-        dsa_resampled = np.repeat(dsa_buf, repeat, axis=0)
+        return t0, dsa_view
 
-        n_res = dsa_resampled.shape[0]
-
-        # --- keep track of view write index separately ---
-        if not hasattr(self, "_view_write_index"):
-            self._view_write_index = 0
-
-        # --- scroll logic ---
-        dsa_view = np.full((num_time_bins, n_freqs), np.nan, dtype=np.float32)
-
-        if n_res <= num_time_bins:
-            # buffer smaller than view → pad left
-            pad = num_time_bins - n_res
-            dsa_view[pad:] = dsa_resampled
-            self._view_write_index = n_res % num_time_bins
-        else:
-            # buffer larger than view → take last num_time_bins columns
-            dsa_view[:, :] = dsa_resampled[-num_time_bins:]
-            self._view_write_index = num_time_bins
-
-        return datetime.datetime.now().timestamp(), dsa_view
-
-    def reset(self, freq_bins=None):
-        if freq_bins is None:  # calculate freq_bins
-            nperseg = int(self.config.SEGMENT_SEC * self.config.SAMPLE_RATE_HZ)
-            self.freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / self.config.SAMPLE_RATE_HZ)
-            print(len(self.freq_bins))
-        else:
-            self.freq_bins = freq_bins
+    def apply_config(self):
+        # calculate freq_bins
+        nperseg = int(self.config.SEGMENT_SEC * self.config.SAMPLE_RATE_HZ)
+        self.freq_bins = np.fft.rfftfreq(nperseg, d=1.0/self.config.SAMPLE_RATE_HZ)
+        mask = (self.freq_bins >= self.config.LOWEST_FREQ_HZ) & (self.freq_bins <= self.config.MAX_FREQ_HZ_BOUNDS[1])
+        self.freq_bins = self.freq_bins[mask]
         self.max_frames = int(self.config.DISPLAY_MINUTES_BOUNDS[1]*60 / self.config.UPDATE_STEP_SEC)
-        self.timestamps = []
-        self.data = []
-        self.write_index = 0
+        self.data = np.full((self.max_frames, len(self.freq_bins)), np.nan, dtype=np.float32)
+        self.timestamps = np.full(self.max_frames, np.nan)
+        self.time_delta = self.config.UPDATE_STEP_SEC
+        self.last_ts = None
         self.full = False
 
 
@@ -267,7 +255,7 @@ class EEGBuffer:
         self.window_sec = SystemConfig.WINDOW_SEC
         self.timestamps = []
         self.eeg_values = []
-        self.time_delta = 1000.0/float(SystemConfig.SAMPLE_RATE_HZ)
+        self.time_delta = 1.0/float(SystemConfig.SAMPLE_RATE_HZ)
         self.last_ts = None
         self.processor = DSACalculator()
 
@@ -275,18 +263,15 @@ class EEGBuffer:
         if data is None or len(data) == 0:
             return None
         output_dsa = []
-        if len(self.timestamps) == 0:
-            self.last_ts = data[-1][0]
-        else:
-            self.last_ts = self.timestamps[-1]
         for ts, eeg in data:
-            expected_ts = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
+            if self.last_ts is None:
+                expected_ts = ts
+            else:
+                expected_ts = self.last_ts + datetime.timedelta(milliseconds=self.time_delta*1000)
             if expected_ts != ts or eeg is None or np.isnan(eeg): # make sure the window is continuos
                 self.timestamps.clear()
                 self.eeg_values.clear()
-                print(self.last_ts)
                 self.last_ts = ts
-                print(expected_ts, ts)
                 continue
             else:
                 self.timestamps.append(ts)
@@ -295,7 +280,7 @@ class EEGBuffer:
 
             if len(self.eeg_values) == int(self.window_sec * SystemConfig.SAMPLE_RATE_HZ):
                 f, psd = self.processor.compute_psd_column(self.eeg_values.copy())
-                output_dsa.append((ts, f, psd))
+                output_dsa.append((ts.timestamp()-self.window_sec, f, psd))
                 self.timestamps.clear()
                 self.eeg_values.clear()
 
@@ -311,13 +296,13 @@ class EEGDSAApplication(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("EEG Density Spectral Array")
-
         self.config = SystemConfig()
-        self.stream = EEGStream()
+        self.old_SEGMENT_SEC = self.config.SEGMENT_SEC
 
         self.eeg_buffer = EEGBuffer()
         self.dsa_buffer = DSABuffer(self.config)
 
+        self.stream = None
         self.start_receive = False
 
         self.dsa_view = DSAView(self.config)
@@ -335,30 +320,46 @@ class EEGDSAApplication(QMainWindow):
         layout.addWidget(self.psd_view)
         self.setCentralWidget(container)
 
+        self.last_ts = None
+        self.last_freqs = None
+        self.time_since_last_ts = 0.0
+
         self.timer = QTimer()
-        self.timer.setInterval(1000)
+        self.timer.setInterval(int(self.config.UPDATE_STEP_SEC*1000))
         self.timer.timeout.connect(self._update_cycle)
         self.timer.start()
 
+
     def _update_cycle(self):
+        if self.stream is None:
+            self.stream = EEGStream()
+        while not self.stream.receiving:
+            print("No stream available")
+            print("Looking for LSL Stream...")
+            self.stream = EEGStream()
+
         new_samples = self.stream.read_samples()
-        print(new_samples)
+        self.time_since_last_ts += self.config.UPDATE_STEP_SEC
         if new_samples is None or len(new_samples) == 0:
             if not self.start_receive:
                 return
-
+            if self.time_since_last_ts > self.config.WINDOW_SEC:
+                self.dsa_buffer.append(self.dsa_buffer.get_last_timestamp()+self.config.UPDATE_STEP_SEC, self.last_freqs, [])
         else:
-            self.start_receive = True
             dsa_column = self.eeg_buffer.extend_and_process(new_samples)
-            for ts, f, psd in dsa_column:
-                if psd is None or f is None or ts is None:
+            for ts, freqs, psd in dsa_column:
+                if psd is None or freqs is None or ts is None:
                     continue
-                save_psd_to_csv(f, psd, "C:\\temp\\VSCaptureWave")
-                self.psd_view.update(f, psd)
-                self.dsa_buffer.append(ts, f, psd)
+                save_psd_to_csv(freqs, psd, "C:\\temp\\VSCaptureWave")
+                self.psd_view.update(freqs, psd)
+                for i in range(int(self.config.WINDOW_SEC*(1.0/self.config.UPDATE_STEP_SEC))):
+                    self.dsa_buffer.append(ts + i * self.config.UPDATE_STEP_SEC, freqs, psd)
+                self.start_receive = True
+                self.last_freqs = freqs
+                self.last_ts = ts
+                self.time_since_last_ts = 0.0
 
-            print(dsa_column)
-
+        # TODO: only update when necessary
         self.dsa_view.update(self.dsa_buffer)
 
 
@@ -366,8 +367,9 @@ class EEGDSAApplication(QMainWindow):
         self.timer.stop()
 
         self.processor = DSACalculator()
-        self.dsa_buffer.reset()
-        self.eeg_buffer = EEGBuffer()
+        if self.old_SEGMENT_SEC != self.config.SEGMENT_SEC:
+            self.dsa_buffer.apply_config()
+        #self.eeg_buffer = EEGBuffer()
 
         self.timer.start()
 

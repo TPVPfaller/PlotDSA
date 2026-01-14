@@ -12,11 +12,13 @@ import numpy as np
 
 class EEGStream:
     def __init__(self):
-        streams = resolve_byprop("name", "EEG_DATA")
-        if not streams:
-            raise RuntimeError("EEG stream not found")
+        self.receiving = False
+        streams = resolve_byprop("name", "EEG_DATA", timeout=5)
 
-        self._inlet = StreamInlet(streams[0])
+        if len(streams) > 0:
+            self._inlet = StreamInlet(streams[0])
+            print(f"Connected to: {streams[0].name()} (uid: {streams[0].uid()})")
+            self.receiving = True
 
     def read_samples(self):
         samples = []
