@@ -1,32 +1,31 @@
 from scipy.signal import welch
 import numpy as np
-from config import SystemConfig as config
+from config import SystemConfig
 
 class DSACalculator:
 
-    def __init__(self):
-        self.window_sec = config.WINDOW_SEC
-        self.sample_rate_hz = config.SAMPLE_RATE_HZ
-        self.segment_sec = config.SEGMENT_SEC
-        self.overlap = config.OVERLAP
+    def __init__(self, WINDOW_SEC, SEGMENT_SEC, OVERLAP_PSD):
+        self.window_sec = WINDOW_SEC
+        self.segment_sec = SEGMENT_SEC
+        self.overlap_psd = OVERLAP_PSD
 
     def compute_psd_column(self, eeg_values):
-        if len(eeg_values) < self.window_sec * self.sample_rate_hz:
+        if len(eeg_values) < self.window_sec * SystemConfig.SAMPLE_RATE_HZ:
             return None, None
-        nperseg = self.sample_rate_hz * self.segment_sec
+        nperseg = SystemConfig.SAMPLE_RATE_HZ * self.segment_sec
         f, psd = welch(
             np.array(eeg_values),
-            fs=self.sample_rate_hz,
+            fs=SystemConfig.SAMPLE_RATE_HZ,
             window="hann",
             nperseg=int(nperseg),
-            noverlap=int(self.overlap * nperseg),
+            noverlap=int(self.overlap_psd * nperseg),
             scaling="density",
             detrend="constant",
             average="mean",
             return_onesided=True,
         )
 
-        mask = (f >= config.LOWEST_FREQ_HZ) & (f <= config.MAX_FREQ_HZ_BOUNDS[1])
+        mask = (f >= SystemConfig.LOWEST_FREQ_HZ) & (f <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
         f = f[mask]
         psd = psd[mask]
 
@@ -38,8 +37,7 @@ class DSACalculator:
 
         return f, psd_db
 
-    def update_config(self):
-        self.window_sec = config.WINDOW_SEC
-        self.sample_rate_hz = config.SAMPLE_RATE_HZ
-        self.segment_sec = config.SEGMENT_SEC
-        self.overlap = config.OVERLAP
+    def update_config(self, WINDOW_SEC, SEGMENT_SEC, OVERLAP_PSD):
+        self.window_sec = WINDOW_SEC
+        self.segment_sec = SEGMENT_SEC
+        self.overlap_psd = OVERLAP_PSD
