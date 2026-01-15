@@ -3,21 +3,24 @@ import numpy as np
 from config import SystemConfig
 
 class DSACalculator:
+    """Computes PSD columns for DSA using Welch's method."""
 
-    def __init__(self, WINDOW_SEC, SEGMENT_SEC, OVERLAP_PSD):
-        self.window_sec = WINDOW_SEC
-        self.segment_sec = SEGMENT_SEC
-        self.overlap_psd = OVERLAP_PSD
+    def __init__(self, window_sec, segment_sec, overlap_psd, sample_rate=SystemConfig.SAMPLE_RATE_HZ):
+        self.window_sec = window_sec
+        self.segment_sec = segment_sec
+        self.overlap_psd = overlap_psd
+        self.sample_rate = sample_rate
 
     def compute_psd_column(self, eeg_values):
-        if len(eeg_values) < self.window_sec * SystemConfig.SAMPLE_RATE_HZ:
+        if len(eeg_values) < self.window_sec * self.sample_rate:
             return None, None
-        nperseg = SystemConfig.SAMPLE_RATE_HZ * self.segment_sec
+        
+        nperseg = int(self.sample_rate * self.segment_sec)
         f, psd = welch(
             np.array(eeg_values),
-            fs=SystemConfig.SAMPLE_RATE_HZ,
+            fs=self.sample_rate,
             window="hann",
-            nperseg=int(nperseg),
+            nperseg=nperseg,
             noverlap=int(self.overlap_psd * nperseg),
             scaling="density",
             detrend="constant",
@@ -29,10 +32,7 @@ class DSACalculator:
         f = f[mask]
         psd = psd[mask]
 
-        # convert to db
-        # Romagnoli et al. (2024). Non-invasive technology for brain monitoring: definition and meaning of the principal
-        # parameters for the International PRactice On TEChnology neuro-moniToring group (I-PROTECT).
-        # Journal of Clinical Monitoring and Computing. 38. 1-19. 10.1007/s10877-024-01146-1.
+        # Convert to dB with a small epsilon to avoid log(0)
         psd_db = 10.0 * np.log10(psd + 1e-12)
 
         return f, psd_db

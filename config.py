@@ -1,4 +1,3 @@
-from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QFormLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox, QGridLayout, QLabel
 )
@@ -15,6 +14,9 @@ class SystemConfig:
     # to observe a frequency reliably: window >= 1/(frequency resolution)
     DISPLAY_MINUTES_BOUNDS = (0.5, 360.0)
     MAX_FREQ_HZ_BOUNDS = (20, 50)
+
+    EEG_BOUNDS = (-300, 300)
+    TIME_DIFF_TOLERANCE = 0.01
 
 
 class ConfigWidget(QGroupBox):

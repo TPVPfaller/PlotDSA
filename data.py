@@ -6,21 +6,34 @@ if getattr(sys, "frozen", False):
     os.environ["PYLSL_LIB"] = os.path.join(base, "pylsl", "lib", "lsl.dll")
 
 from pylsl import StreamInlet, resolve_byprop
-from datetime import datetime
+import csv
+from datetime import datetime as dt
 import numpy as np
-
+from config import SystemConfig
 
 class EEGStream:
     def __init__(self):
         self.receiving = False
-        streams = resolve_byprop("name", "EEG_DATA", timeout=5)
+        self._inlet = None
+        self.connect()
 
-        if len(streams) > 0:
-            self._inlet = StreamInlet(streams[0])
-            print(f"Connected to: {streams[0].name()} (uid: {streams[0].uid()})")
-            self.receiving = True
+    def connect(self):
+        try:
+            streams = resolve_byprop("name", "EEG_DATA", timeout=2)
+            if streams:
+                self._inlet = StreamInlet(streams[0])
+                print(f"Connected to: {streams[0].name()} (uid: {streams[0].uid()})")
+                self.receiving = True
+            else:
+                self.receiving = False
+        except Exception as e:
+            print(f"LSL Connection error: {e}")
+            self.receiving = False
 
     def read_samples(self):
+        if not self.receiving or self._inlet is None:
+            return []
+
         samples = []
         while True:
             sample, _ = self._inlet.pull_sample(timeout=0)
@@ -30,9 +43,15 @@ class EEGStream:
             try:
                 timestamp, eeg_str = sample[0].split(",")
                 value = float(eeg_str)
-                timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
-                if np.isfinite(value):
-                    samples.append((timestamp, value))
+                timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                if not np.isfinite(value):
+                    value = np.nan
+                elif value < SystemConfig.EEG_BOUNDS[0] or value > SystemConfig.EEG_BOUNDS[1]:
+                    value = np.nan
+
+                samples.append((timestamp, value))
+
+
             except Exception as e:
                 # Invalid sample discarded
                 print("Invalid sample: ",  e)
@@ -46,25 +65,23 @@ def build_filename(base_dir, freqs, start_time=None):
     if freqs.size < 2:
         raise ValueError("At least 2 frequency bins required")
 
-    # Frequency resolution (Δf)
     df = round(freqs[1] - freqs[0], 6)
 
-    # Timestamp string
     if start_time is None:
-        start_time = datetime.now()
+        start_time = dt.now()
+    else:
+        start_time = dt.fromtimestamp(start_time)
     ts = start_time.strftime("%Y-%m-%d")
 
-    # Build filename
     filename = f"dsa_{ts}_df{df:.1f}Hz.csv"
-
-    return base_dir + "\\" + filename
+    return os.path.join(base_dir, filename)
 
 def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
     """
     Save a single PSD column to a CSV file.
 
     File format:
-    - Header written on first creation: 'timestamp' followed by one column per frequency bin labelled
+    - Header written on first creation: 'timestamp' followed by one column per frequency bin labeled
       like 'f_{freq:.2f}_Hz'.
     - Each call appends a new row with the provided timestamp and PSD values (dB/Hz).
 
@@ -79,34 +96,29 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
         ValueError: If shapes of inputs mismatch or if appending to an existing file with an
                     incompatible number of columns (i.e., different frequency bins).
     """
-    import csv
-    from datetime import datetime as _dt
-    import numpy as _np
-    import os as _os
+
 
     # Normalize inputs
-    freqs = _np.asarray(freqs).ravel()
-    psd_db = _np.asarray(psd_db).ravel()
-
+    freqs = np.asarray(freqs).ravel()
+    psd_db = np.asarray(psd_db).ravel()
     if freqs.shape[0] != psd_db.shape[0]:
         raise ValueError("freqs and psd_db must have the same length")
 
     # Prepare timestamp string
     if timestamp is None:
-        ts_str = _dt.now().isoformat(timespec="milliseconds")
+        ts_str = dt.now().isoformat(timespec="milliseconds")
     else:
-        if isinstance(timestamp, _dt):
+        if isinstance(timestamp, dt):
             ts_str = timestamp.isoformat(timespec="milliseconds")
         else:
             ts_str = str(timestamp)
-
     # Ensure directory exists
     filepath = build_filename(base_dir, freqs, timestamp)
-    directory = _os.path.dirname(filepath)
-    if directory and not _os.path.exists(directory):
-        _os.makedirs(directory, exist_ok=True)
+    directory = os.path.dirname(filepath)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
 
-    write_header = not _os.path.exists(filepath) or _os.path.getsize(filepath) == 0
+    write_header = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
 
     # If appending to an existing file, validate column count
     if not write_header:
@@ -125,7 +137,6 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
                         )
         except FileNotFoundError:
             write_header = True
-
     # Write
     with open(filepath, "a", newline="") as f:
         writer = csv.writer(f)
@@ -133,5 +144,5 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
             freq_headers = [f"f_{freq:.2f}_Hz" for freq in freqs]
             writer.writerow(["timestamp"] + freq_headers)
 
-        row_values = [np.round(x, 1) if _np.isfinite(x) else "" for x in psd_db]
+        row_values = [int(np.round(x, 0)) if np.isfinite(x) else "" for x in psd_db]
         writer.writerow([ts_str] + row_values)

@@ -6,10 +6,10 @@ EEG Density Spectral Array Viewer
 
 import numpy as np
 import sys
-
 import datetime
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
+from concurrent.futures import ThreadPoolExecutor
 
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PySide6.QtCore import QTimer
 
 from config import SystemConfig, ConfigWidget
@@ -18,6 +18,11 @@ from calculations import DSACalculator
 from views import DSAView, PSDView, EEGView
 
 class DSABuffer:
+    """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
+
+    Stores PSD columns aligned to a fixed time grid defined by `SystemConfig.UPDATE_STEP_SEC`.
+    Read-only methods return windows sized for the current view.
+    """
     def __init__(self, SEGMENT_SEC):
         self.SEGMENT_SEC = SEGMENT_SEC
 
@@ -41,8 +46,6 @@ class DSABuffer:
             slot = self._timestamp_to_slot(ts)
 
         idx = slot % self.max_frames
-        #print("index")
-        #print(idx, ts)
 
         # Fill gaps with NaNs
         if self.last_slot is not None and slot > self.last_slot + 1:
@@ -66,11 +69,14 @@ class DSABuffer:
         return int(np.round((ts - self.t0) / SystemConfig.UPDATE_STEP_SEC))
 
     def get_last_timestamp(self):
+        if self.last_slot is None:
+            return datetime.datetime.now().timestamp()
         return self.timestamps[self.last_slot % self.max_frames]
 
     def get_frame(self, width, height):
         if self.t0 is None:
             return datetime.datetime.now().timestamp(), np.empty((1, 0), dtype=np.float32)
+
         height = min(height, self.data.shape[1])
         width = min(width, self.max_frames)
 
@@ -99,18 +105,24 @@ class DSABuffer:
 
     def _reset(self):
         nperseg = int(self.SEGMENT_SEC * SystemConfig.SAMPLE_RATE_HZ)
-        self.freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
-        mask = (self.freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (self.freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
-        self.freq_bins = self.freq_bins[mask]
+        freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
+        mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
+        self.freq_bins = freq_bins[mask]
+
         self.data = np.full((self.max_frames, len(self.freq_bins)), np.nan, dtype=np.float32)
         self.timestamps = np.full(self.max_frames, np.nan)
 
         self.t0 = None
-        self.last_slot = 0
+        self.last_slot = None
         self.full = False
 
 
 class EEGBuffer:
+    """Buffers raw EEG samples and emits DSA-ready PSD columns using a sliding window.
+
+    - Maintains continuity by resetting on missing/invalid samples or timestamp gaps.
+    - Uses DSACalculator to compute a PSD for each full window and advances by `hop_len` samples.
+    """
     def __init__(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
         self.timestamps = []
@@ -125,7 +137,7 @@ class EEGBuffer:
 
     def extend_and_process(self, data):
         if data is None or len(data) == 0:
-            return None
+            return []
 
         output_dsa = []
 
@@ -133,7 +145,8 @@ class EEGBuffer:
             # continuity check
             if self.last_ts is not None:
                 expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
-                if ts != expected or eeg is None or np.isnan(eeg):
+                dt = abs((ts - expected).total_seconds())
+                if dt > SystemConfig.TIME_DIFF_TOLERANCE * self.time_delta / 1000.0 or eeg is None or np.isnan(eeg):
                     self.eeg_values.clear()
                     self.timestamps.clear()
                     self.last_ts = ts
@@ -150,7 +163,7 @@ class EEGBuffer:
 
                 f, psd = self.processor.compute_psd_column(window.copy())
 
-                output_dsa.append((window_ts.timestamp() - self.window_sec, f, psd))
+                output_dsa.append((window_ts.timestamp() - self.window_sec / 2.0, f, psd))
 
                 # SLIDE the window forward
                 self.eeg_values = self.eeg_values[self.hop_len:]
@@ -160,12 +173,19 @@ class EEGBuffer:
 
     def update_config(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
+        self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
         self.hop_len = int(self.window_len * (1.0 - overlap))
         if self.hop_len < 1:
             self.hop_len = 1
         self.processor.update_config(window_sec, segment_sec, segment_overlap)
 
 class EEGDSAApplication(QMainWindow):
+    """Main Qt application wiring together config UI, data stream, processing, and views.
+
+    Periodically pulls samples from `EEGStream`, updates the raw EEG view immediately,
+    computes PSD/DSA via `EEGBuffer` and `DSACalculator`, and refreshes DSA/PSD/EEG
+    displays on the configured cadence.
+    """
 
     def __init__(self):
         super().__init__()
@@ -184,6 +204,8 @@ class EEGDSAApplication(QMainWindow):
         self.dsa_view = DSAView(self.config)
         self.psd_view = PSDView(self.config.PSD_DB_MIN, self.config.PSD_DB_MAX)
         self.eeg_view = EEGView(self.config.WINDOW_SEC)
+
+        self.io_executor = ThreadPoolExecutor(max_workers=1)
 
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -207,19 +229,17 @@ class EEGDSAApplication(QMainWindow):
     def _update_cycle(self):
         if self.stream is None:
             self.stream = EEGStream()
-        while not self.stream.receiving:
-            print("No stream available")
-            print("Looking for LSL Stream...")
-            self.stream = EEGStream()
+            if not self.stream.receiving:
+                return  # Skip this cycle if still no stream
 
         new_samples = self.stream.read_samples()
-        self.time_since_last_ts += SystemConfig.UPDATE_STEP_SEC
-        if new_samples is None or len(new_samples) == 0:
-            if not self.start_receive:
-                return
-            if self.time_since_last_ts > self.config.WINDOW_SEC:
-                self.dsa_buffer.append(self.dsa_buffer.get_last_timestamp()+SystemConfig.UPDATE_STEP_SEC, self.last_freqs, [])
-                self.update = True
+
+        if not new_samples:
+            if self.start_receive:
+                self.time_since_last_ts += SystemConfig.UPDATE_STEP_SEC
+                if self.time_since_last_ts > self.config.WINDOW_SEC:
+                    self.dsa_buffer.append(self.dsa_buffer.get_last_timestamp()+SystemConfig.UPDATE_STEP_SEC, self.last_freqs, [])
+                    self.update = True
         else:
             # Update raw EEG view first
             self.eeg_view.append_samples(new_samples)
@@ -228,20 +248,31 @@ class EEGDSAApplication(QMainWindow):
             for ts, freqs, psd in dsa_column:
                 if psd is None or freqs is None or ts is None:
                     continue
-                save_psd_to_csv(freqs, psd, "C:\\temp\\VSCaptureWave")
+
+                # Run disk I/O in a background thread to prevent UI stuttering
+                self.io_executor.submit(
+                    save_psd_to_csv,
+                    freqs,
+                    psd,
+                    "C:\\temp\\VSCaptureWave",
+                    ts
+                )
                 self.psd_view.update(freqs, psd)
-                for i in range(int(self.config.WINDOW_SEC*(1.0/SystemConfig.UPDATE_STEP_SEC))):
+                steps = int(self.config.WINDOW_SEC*(1.0/SystemConfig.UPDATE_STEP_SEC))
+                for i in range(steps):
                     self.dsa_buffer.append(ts + i * SystemConfig.UPDATE_STEP_SEC, freqs, psd)
-                self.update = True
-                self.start_receive = True
+
                 self.last_freqs = freqs
                 self.last_ts = ts
                 self.time_since_last_ts = 0.0
+                self.update = True
+                self.start_receive = True
 
         if self.update:
             self.dsa_view.update(self.dsa_buffer)
             self.eeg_view.redraw_current()
             self.update = False
+
         if self.new_config:
             self._update_configs()
 

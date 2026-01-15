@@ -101,7 +101,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.dsa_rect,
             autoLevels=False,
             levels=(self.PSD_DB_MIN, self.PSD_DB_MAX),
-            lut=self.cmap.getLookupTable(),
+            lut=self.lut,  # reuse precomputed LUT for efficiency
             nan_policy="omit",
         )
 
