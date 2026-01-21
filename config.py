@@ -5,14 +5,18 @@ from PySide6.QtWidgets import (
 
 class SystemConfig:
     SAMPLE_RATE_HZ = 250
-    UPDATE_STEP_SEC = 0.5
+    UPDATE_STEP_SEC = 0.25
     INTERVAL = 1.1
     NO_DATA_VALUE = -10000.0
     LOWEST_FREQ_HZ = 0.1 # Viktor Bublitz et al. Electroencephalogram-based prediction and detection of responsiveness
                          # to noxious stimulation in critical care patients: a retrospective single-centre analysis
 
     # to observe a frequency reliably: window >= 1/(frequency resolution)
-    DISPLAY_MINUTES_BOUNDS = (0.5, 360.0)
+    WINDOW_SEC_BOUNDS = (UPDATE_STEP_SEC, 60.0)
+    OVERLAP_BOUNDS = (0.0, 1.0) # exclusive bounds
+    SEGMENT_SEC_BOUNDS = (1.0, 4.0)
+    SEGMENT_OVERLAP_BOUNDS = (0.0, 1.0) # exclusive bounds
+    DISPLAY_MINUTES_BOUNDS = (0.5, 300.0) # Max 5 hours
     MAX_FREQ_HZ_BOUNDS = (20, 50)
 
     EEG_BOUNDS = (-300, 300)
@@ -41,7 +45,7 @@ class ConfigWidget(QGroupBox):
         self.max_db = QLineEdit(str(self.PSD_DB_MAX))
 
 
-        apply_btn = QPushButton("Apply")
+        apply_btn = QPushButton("Apply Changes")
         apply_btn.clicked.connect(self._apply)
 
         grid = QGridLayout()
@@ -73,6 +77,11 @@ class ConfigWidget(QGroupBox):
         layout.addRow(grid)
         layout.addRow(apply_btn)
 
+        # TODO: Add reset button that resets to default values
+        # TODO: Add delete button that deletes the buffer
+        # TODO: Add confirmation dialog for both reset and delete
+
+
     def _apply(self):
         try:
             if float(self.segment_sec.text()) > float(self.window_sec.text()):
@@ -82,6 +91,7 @@ class ConfigWidget(QGroupBox):
             self.OVERLAP = float(self.overlap.text())
 
             self.SEGMENT_SEC = float(self.segment_sec.text())
+            # TODO: Add confirmation dialog for SEGMENT_SEC
             self.SEGMENT_OVERLAP = float(self.segment_overlap.text())
 
             self.DISPLAY_MINUTES = float(self.display_min.text())
@@ -89,7 +99,7 @@ class ConfigWidget(QGroupBox):
 
             self.PSD_DB_MIN = int(self.min_db.text())
             self.PSD_DB_MAX = int(self.max_db.text())
-
+            # TODO: Add bounds for all values and show dialog if invalid
             self.on_apply_callback()
 
         except Exception as e:
@@ -101,9 +111,9 @@ class ConfigWidget(QGroupBox):
 
     def _default_config(self):
         self.WINDOW_SEC = 9.0
-        self.OVERLAP = 0.75
+        self.OVERLAP = 0.85
         self.SEGMENT_SEC = 4.0
-        self.SEGMENT_OVERLAP = 0.8
+        self.SEGMENT_OVERLAP = 0.5
         self.DISPLAY_MINUTES = 10.0
         self.MAX_FREQ_HZ = 30
         # Percentage of overlap

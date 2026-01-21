@@ -234,40 +234,36 @@ class EEGDSAApplication(QMainWindow):
                 return  # Skip this cycle if still no stream
 
         new_samples = self.stream.read_samples()
+        if not self.stream.receiving:
+            self.stream.connect()
+            return
 
-        if not new_samples:
-            if self.start_receive:
-                self.time_since_last_ts += SystemConfig.UPDATE_STEP_SEC
-                if self.time_since_last_ts > self.config.WINDOW_SEC:
-                    self.dsa_buffer.append(self.dsa_buffer.get_last_timestamp()+SystemConfig.UPDATE_STEP_SEC, self.last_freqs, [])
-                    self.update = True
-        else:
-            # Update raw EEG view first
-            self.eeg_view.append_samples(new_samples)
+        # Update raw EEG view first
+        self.eeg_view.append_samples(new_samples)
 
-            dsa_column = self.eeg_buffer.extend_and_process(new_samples)
-            for ts, freqs, psd in dsa_column:
-                if psd is None or freqs is None or ts is None:
-                    continue
+        dsa_column = self.eeg_buffer.extend_and_process(new_samples)
+        for ts, freqs, psd in dsa_column:
+            if psd is None or freqs is None or ts is None:
+                continue
 
-                # Run disk I/O in a background thread to prevent UI stuttering
-                self.io_executor.submit(
-                    save_psd_to_csv,
-                    freqs,
-                    psd,
-                    "C:\\temp\\VSCaptureWave",
-                    ts
-                )
-                self.psd_view.update(freqs, psd)
-                steps = int(self.config.WINDOW_SEC*(1.0/SystemConfig.UPDATE_STEP_SEC))
-                for i in range(steps):
-                    self.dsa_buffer.append(ts + i * SystemConfig.UPDATE_STEP_SEC, freqs, psd)
+            # Run disk I/O in a background thread to prevent UI stuttering
+            self.io_executor.submit(
+                save_psd_to_csv,
+                freqs,
+                psd,
+                "C:\\temp\\VSCaptureWave",
+                ts
+            )
+            self.psd_view.update(freqs, psd)
+            steps = int(self.config.WINDOW_SEC*(1.0/SystemConfig.UPDATE_STEP_SEC))
+            for i in range(steps):
+                self.dsa_buffer.append(ts + i * SystemConfig.UPDATE_STEP_SEC, freqs, psd)
 
-                self.last_freqs = freqs
-                self.last_ts = ts
-                self.time_since_last_ts = 0.0
-                self.update = True
-                self.start_receive = True
+            self.last_freqs = freqs
+            self.last_ts = ts
+            self.time_since_last_ts = 0.0
+            self.update = True
+            self.start_receive = True
 
         if self.update:
             self.dsa_view.update(self.dsa_buffer)

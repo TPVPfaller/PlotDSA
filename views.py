@@ -85,7 +85,6 @@ class DSAView(pg.GraphicsLayoutWidget):
             (240, 160, 40),  # orange
             (240, 80, 40),  # red
             (240, 0, 0),
-            (130, 0, 0),  # high power (burst)
         ]
 
         pos = np.linspace(0.0, 1.0, len(colors))

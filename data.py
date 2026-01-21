@@ -48,6 +48,7 @@ class EEGStream:
                 if not np.isfinite(value):
                     value = np.nan
                 elif value < SystemConfig.EEG_BOUNDS[0] or value > SystemConfig.EEG_BOUNDS[1]:
+                    print(f"Out of bounds: {value}")
                     value = np.nan
 
                 samples.append((timestamp, value))
@@ -113,7 +114,6 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
             ts_str = str(timestamp)
     # Ensure directory exists
     filepath = build_filename(base_dir, freqs, timestamp)
-    print(f"sacing to: {filepath}")
     directory = os.path.dirname(filepath)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
@@ -138,6 +138,7 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
         except FileNotFoundError:
             write_header = True
     # Write
+    # TODO: Save in a predefined resolution of 0.5 Hz
     with open(filepath, "a", newline="") as f:
         writer = csv.writer(f)
         if write_header:
