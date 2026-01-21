@@ -11,6 +11,7 @@ from datetime import datetime as dt
 import numpy as np
 from config import SystemConfig
 
+
 class EEGStream:
     def __init__(self):
         self.receiving = False
@@ -50,7 +51,6 @@ class EEGStream:
                     value = np.nan
 
                 samples.append((timestamp, value))
-
 
             except Exception as e:
                 # Invalid sample discarded
@@ -97,7 +97,6 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
                     incompatible number of columns (i.e., different frequency bins).
     """
 
-
     # Normalize inputs
     freqs = np.asarray(freqs).ravel()
     psd_db = np.asarray(psd_db).ravel()
@@ -114,6 +113,7 @@ def save_psd_to_csv(freqs, psd_db, base_dir, timestamp=None):
             ts_str = str(timestamp)
     # Ensure directory exists
     filepath = build_filename(base_dir, freqs, timestamp)
+    print(f"sacing to: {filepath}")
     directory = os.path.dirname(filepath)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)

@@ -147,6 +147,7 @@ class EEGBuffer:
                 expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
                 dt = abs((ts - expected).total_seconds())
                 if dt > SystemConfig.TIME_DIFF_TOLERANCE * self.time_delta / 1000.0 or eeg is None or np.isnan(eeg):
+                    print(ts, expected)
                     self.eeg_values.clear()
                     self.timestamps.clear()
                     self.last_ts = ts
@@ -211,7 +212,7 @@ class EEGDSAApplication(QMainWindow):
         layout = QVBoxLayout(container)
         layout.addWidget(self.config)
         layout.addWidget(self.dsa_view)
-        #layout.addWidget(self.psd_view)
+        layout.addWidget(self.psd_view)
         layout.addWidget(self.eeg_view)
         self.setCentralWidget(container)
 

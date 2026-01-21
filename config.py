@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 
 
 class SystemConfig:
-    SAMPLE_RATE_HZ = 400
+    SAMPLE_RATE_HZ = 250
     UPDATE_STEP_SEC = 0.5
     INTERVAL = 1.1
     NO_DATA_VALUE = -10000.0
@@ -16,7 +16,7 @@ class SystemConfig:
     MAX_FREQ_HZ_BOUNDS = (20, 50)
 
     EEG_BOUNDS = (-300, 300)
-    TIME_DIFF_TOLERANCE = 0.01
+    TIME_DIFF_TOLERANCE = 0.1
 
 
 class ConfigWidget(QGroupBox):
@@ -100,12 +100,12 @@ class ConfigWidget(QGroupBox):
             )
 
     def _default_config(self):
-        self.WINDOW_SEC = 4.0
-        self.OVERLAP = 0.5
-        self.SEGMENT_SEC = 2.0
-        self.SEGMENT_OVERLAP = 0.5
-        self.DISPLAY_MINUTES = 2.0
-        self.MAX_FREQ_HZ = 40
+        self.WINDOW_SEC = 9.0
+        self.OVERLAP = 0.75
+        self.SEGMENT_SEC = 4.0
+        self.SEGMENT_OVERLAP = 0.8
+        self.DISPLAY_MINUTES = 10.0
+        self.MAX_FREQ_HZ = 30
         # Percentage of overlap
-        self.PSD_DB_MIN = -25
-        self.PSD_DB_MAX = 10
+        self.PSD_DB_MIN = -20
+        self.PSD_DB_MAX = 20
