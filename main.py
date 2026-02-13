@@ -17,6 +17,13 @@ from data import EEGStream, save_psd_to_csv
 from calculations import DSACalculator
 from views import DSAView, PSDView, EEGView
 
+#TODO
+#einstellungn auf ein menu
+#option für normiertes psd
+#spektrum normiert nicht menü
+#touch screen
+#schieber zum reinzoomen button zum reseten
+
 class DSABuffer:
     """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
 
