@@ -1,121 +1,111 @@
-from PySide6.QtWidgets import (
-    QFormLayout, QLineEdit, QPushButton, QGroupBox, QMessageBox, QGridLayout, QLabel
-)
+"""
+IEC 62304 – Class B
+
+System Configuration Module
+Centralized configuration definition and validation.
+"""
+
+from dataclasses import dataclass, field
+from typing import Tuple
 
 
 class SystemConfig:
-    SAMPLE_RATE_HZ = 250
-    UPDATE_STEP_SEC = 0.25
-    INTERVAL = 1.1
-    NO_DATA_VALUE = -10000.0
-    LOWEST_FREQ_HZ = 0.1 # Viktor Bublitz et al. Electroencephalogram-based prediction and detection of responsiveness
-                         # to noxious stimulation in critical care patients: a retrospective single-centre analysis
+    """
+    Immutable system constants.
+    These should never change during runtime.
+    """
+    SAMPLE_RATE_HZ: int = 400
+    UPDATE_STEP_SEC: float = 0.25
+    INTERVAL: float = 1.1
+    NO_DATA_VALUE: float = -10000.0
+    LOWEST_FREQ_HZ: float = 0.1
+    TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
+    BASE_DIR: str = "C:\\temp\\VSCaptureWave"
+    EEG_VIEW_WINDOW_SEC: float = 4.0
 
-    # to observe a frequency reliably: window >= 1/(frequency resolution)
-    WINDOW_SEC_BOUNDS = (UPDATE_STEP_SEC, 60.0)
-    OVERLAP_BOUNDS = (0.0, 1.0) # exclusive bounds
-    SEGMENT_SEC_BOUNDS = (1.0, 4.0)
-    SEGMENT_OVERLAP_BOUNDS = (0.0, 1.0) # exclusive bounds
-    DISPLAY_MINUTES_BOUNDS = (0.5, 300.0) # Max 5 hours
-    MAX_FREQ_HZ_BOUNDS = (20, 50)
-
-    EEG_BOUNDS = (-300, 300)
-    TIME_DIFF_TOLERANCE = 0.1
-
-
-class ConfigWidget(QGroupBox):
-    def __init__(self, on_apply_callback):
-        super().__init__("System Configuration")
-
-        self._default_config()
-        self.on_apply_callback = on_apply_callback
-
-        layout = QFormLayout(self)
-
-        self.window_sec = QLineEdit(str(self.WINDOW_SEC))
-        self.overlap = QLineEdit(str(self.OVERLAP))
-
-        self.segment_sec = QLineEdit(str(self.SEGMENT_SEC))
-        self.segment_overlap = QLineEdit(str(self.SEGMENT_OVERLAP))
-
-        self.display_min = QLineEdit(str(self.DISPLAY_MINUTES))
-        self.max_freq = QLineEdit(str(self.MAX_FREQ_HZ))
-
-        self.min_db = QLineEdit(str(self.PSD_DB_MIN))
-        self.max_db = QLineEdit(str(self.PSD_DB_MAX))
+    # Bounds (class-level, not instance attributes)
+    WINDOW_SEC_BOUNDS: Tuple[float, float] = (UPDATE_STEP_SEC, 60.0)
+    SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
+    WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 1.0) # exclusive
+    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 1.0) # exclusive
+    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 300.0)
+    MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
+    PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
+    PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
+    EEG_BOUNDS: Tuple[int, int] = (-300, 300)
 
 
-        apply_btn = QPushButton("Apply Changes")
-        apply_btn.clicked.connect(self._apply)
 
-        grid = QGridLayout()
+@dataclass(frozen=True)
+class UserConfig:
+    """
+    User-configurable settings with validation.
+    Immutable at runtime; updates return a new instance.
+    """
 
-        grid.addWidget(QLabel("Window Length (s)"), 0, 0)
-        grid.addWidget(self.window_sec, 0, 1)
+    # Current values
+    window_sec: float = 4.0
+    segment_sec: float = 2.0
+    segment_overlap: float = 0.5
+    window_overlap: float = 0.85
+    display_minutes: float = 10.0
+    max_freq_hz: int = 30
+    psd_db_min: int = -20
+    psd_db_max: int = 20
 
-        grid.addWidget(QLabel("Segment Length (s)"), 0, 2)
-        grid.addWidget(self.segment_sec, 0, 3)
+    def __post_init__(self):
+        """Validate on creation."""
+        self.validate()
 
-        grid.addWidget(QLabel("Overlap (0-1)"), 1, 0)
-        grid.addWidget(self.overlap, 1, 1)
+    def validate(self) -> None:
+        """
+        Validates the entire configuration.
+        Raises ValueError if invalid.
+        """
+        self._check_bounds("window_sec", self.window_sec, SystemConfig.WINDOW_SEC_BOUNDS)
+        self._check_bounds("segment_sec", self.segment_sec, SystemConfig.SEGMENT_SEC_BOUNDS)
+        self._check_bounds("display_minutes", self.display_minutes, SystemConfig.DISPLAY_MINUTES_BOUNDS)
+        self._check_bounds("max_freq_hz", self.max_freq_hz, SystemConfig.MAX_FREQ_HZ_BOUNDS)
+        self._check_bounds("psd_db_min", self.psd_db_min, SystemConfig.PSD_DB_MIN_BOUNDS)
+        self._check_bounds("psd_db_max", self.psd_db_max, SystemConfig.PSD_DB_MAX_BOUNDS)
 
-        grid.addWidget(QLabel("Segment Overlap (0-1)"), 1, 2)
-        grid.addWidget(self.segment_overlap, 1, 3)
-
-        grid.addWidget(QLabel("Display Time (min)"), 2, 0)
-        grid.addWidget(self.display_min, 2, 1)
-
-        grid.addWidget(QLabel("Max Frequency (Hz)"), 3, 0)
-        grid.addWidget(self.max_freq, 3, 1)
-
-        grid.addWidget(QLabel("Min Power (dB)"), 2, 2)
-        grid.addWidget(self.min_db, 2, 3)
-
-        grid.addWidget(QLabel("Max Power (dB)"), 3, 2)
-        grid.addWidget(self.max_db, 3, 3)
-
-        layout.addRow(grid)
-        layout.addRow(apply_btn)
-
-        # TODO: Add reset button that resets to default values
-        # TODO: Add delete button that deletes the buffer
-        # TODO: Add confirmation dialog for both reset and delete
-
-
-    def _apply(self):
-        try:
-            if float(self.segment_sec.text()) > float(self.window_sec.text()):
-                raise ValueError("Segment size must be smaller than window size")
-
-            self.WINDOW_SEC = float(self.window_sec.text())
-            self.OVERLAP = float(self.overlap.text())
-
-            self.SEGMENT_SEC = float(self.segment_sec.text())
-            # TODO: Add confirmation dialog for SEGMENT_SEC
-            self.SEGMENT_OVERLAP = float(self.segment_overlap.text())
-
-            self.DISPLAY_MINUTES = float(self.display_min.text())
-            self.MAX_FREQ_HZ = int(self.max_freq.text())
-
-            self.PSD_DB_MIN = int(self.min_db.text())
-            self.PSD_DB_MAX = int(self.max_db.text())
-            # TODO: Add bounds for all values and show dialog if invalid
-            self.on_apply_callback()
-
-        except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Invalid Configuration",
-                str(e)
+        # Exclusive bounds for overlaps
+        if not (SystemConfig.WINDOW_OVERLAP_BOUNDS[0] < self.window_overlap < SystemConfig.WINDOW_OVERLAP_BOUNDS[1]):
+            raise ValueError(
+                f"overlap must be between {SystemConfig.WINDOW_OVERLAP_BOUNDS[0]} and {SystemConfig.WINDOW_OVERLAP_BOUNDS[1]} (exclusive), "
+                f"got {self.window_overlap}"
             )
 
-    def _default_config(self):
-        self.WINDOW_SEC = 9.0
-        self.OVERLAP = 0.85
-        self.SEGMENT_SEC = 4.0
-        self.SEGMENT_OVERLAP = 0.5
-        self.DISPLAY_MINUTES = 10.0
-        self.MAX_FREQ_HZ = 30
-        # Percentage of overlap
-        self.PSD_DB_MIN = -20
-        self.PSD_DB_MAX = 20
+        if not (SystemConfig.SEGMENT_OVERLAP_BOUNDS[0] < self.segment_overlap < SystemConfig.SEGMENT_OVERLAP_BOUNDS[1]):
+            raise ValueError(
+                f"segment_overlap must be between {SystemConfig.SEGMENT_OVERLAP_BOUNDS[0]} and "
+                f"{SystemConfig.SEGMENT_OVERLAP_BOUNDS[1]} (exclusive), got {self.segment_overlap}"
+            )
+
+        # Cross-field validation
+        if self.segment_sec > self.window_sec:
+            raise ValueError(
+                f"segment_sec ({self.segment_sec}) must not exceed window_sec ({self.window_sec})"
+            )
+
+        if self.psd_db_min >= self.psd_db_max:
+            raise ValueError(
+                f"psd_db_min ({self.psd_db_min}) must be less than psd_db_max ({self.psd_db_max})"
+            )
+
+    def update(self, **kwargs) -> 'UserConfig':
+        """
+        Returns a new UserConfig instance with updated values.
+        """
+        from dataclasses import replace
+        new_config = replace(self, **kwargs)
+        new_config.validate()
+        return new_config
+
+    @staticmethod
+    def _check_bounds(name: str, value: float, bounds: Tuple[float, float]) -> None:
+        """Check if value is within bounds."""
+        if not (bounds[0] <= value <= bounds[1]):
+            raise ValueError(
+                f"{name} must be within [{bounds[0]}, {bounds[1]}], got {value}"
+            )

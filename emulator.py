@@ -10,7 +10,7 @@ from config import SystemConfig
 # Configuration
 # =========================
 DATA_DIR = "Entropy_Data"
-CSV_FILE = "JSMF_003_filtered_emergence.csv"
+CSV_FILE = "JSMF_006_filtered_emergence.csv"
 
 STREAM_NAME = "EEG_DATA"
 STREAM_TYPE = "EEG"
@@ -44,13 +44,7 @@ def load_csv_first_column(filepath):
 
 
 def main():
-    filepath = os.path.join(DATA_DIR, CSV_FILE)
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"CSV file not found: {filepath}")
 
-    values = load_csv_first_column(filepath)
-    if not values:
-        raise RuntimeError("No valid samples loaded")
 
     # Create LSL outlet
     info = StreamInfo(
@@ -62,24 +56,36 @@ def main():
         source_id=SOURCE_ID
     )
     outlet = StreamOutlet(info)
-
-    print(f"Streaming {len(values)} samples from {CSV_FILE}")
     print(f"LSL stream '{STREAM_NAME}' @ {SAMPLE_RATE_HZ} Hz")
 
-    # Deterministic timestamping
-    start_time = datetime.now()
-    interval = 1.0 / SAMPLE_RATE_HZ
+    for i in range(1, 9):
+        if i == 8:
+            continue
 
-    for idx, value in enumerate(values):
-        ts = start_time + timedelta(seconds=idx * interval)
-        ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-        sample_str = f"{ts_str},{value}"
+        filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"CSV file not found: {filepath}")
 
-        # Push to LSL
-        outlet.push_sample([sample_str])
-        time.sleep(interval)
+        values = load_csv_first_column(filepath)
+        if not values:
+            raise RuntimeError("No valid samples loaded")
+        print(f"Streaming {len(values)} samples from {CSV_FILE}")
 
-    print("All samples streamed once. Exiting.")
+
+        # Deterministic timestamping
+        start_time = datetime.now()
+        interval = 1.0 / SAMPLE_RATE_HZ
+
+        for idx, value in enumerate(values):
+            ts = start_time + timedelta(seconds=idx * interval)
+            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+            sample_str = f"{ts_str},{value}"
+
+            # Push to LSL
+            outlet.push_sample([sample_str])
+            time.sleep(interval)
+
+        print("All samples streamed once. Exiting.")
 
 
 if __name__ == "__main__":

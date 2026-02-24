@@ -6,10 +6,10 @@ from config import SystemConfig
 class DSACalculator:
     """Computes PSD columns for DSA using Welch's method, with optional filtering."""
 
-    def __init__(self, window_sec, segment_sec, overlap_psd, sample_rate=SystemConfig.SAMPLE_RATE_HZ):
+    def __init__(self, window_sec, segment_sec, segment_overlap, sample_rate=SystemConfig.SAMPLE_RATE_HZ):
         self.window_sec = window_sec
         self.segment_sec = segment_sec
-        self.overlap_psd = overlap_psd
+        self.segment_overlap = segment_overlap
         self.sample_rate = sample_rate
 
         # Default filter parameters
@@ -45,7 +45,7 @@ class DSACalculator:
             fs=self.sample_rate,
             window="hann",
             nperseg=nperseg,
-            noverlap=int(self.overlap_psd * nperseg),
+            noverlap=int(self.segment_overlap * nperseg),
             scaling="density",
             detrend="constant",
             average="mean",
@@ -62,7 +62,7 @@ class DSACalculator:
         psd_db = 10.0 * np.log10(psd)
         return f, psd_db
 
-    def update_config(self, WINDOW_SEC, SEGMENT_SEC, OVERLAP_PSD):
-        self.window_sec = WINDOW_SEC
-        self.segment_sec = SEGMENT_SEC
-        self.overlap_psd = OVERLAP_PSD
+    def update_config(self, window_sec, segment_sec, segment_overlap):
+        self.window_sec = window_sec
+        self.segment_sec = segment_sec
+        self.segment_overlap = segment_overlap
