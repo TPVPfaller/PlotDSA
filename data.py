@@ -173,37 +173,41 @@ class EEGBuffer:
         self.hop_len = int(self.window_len * (1.0 - overlap))
         if self.hop_len < 1:
             self.hop_len = 1
-        # Will be removed and replaced by sample_callback in get_dsa_columns
+        # Will be filled by `get_dsa_columns` with tuples (epoch_seconds, value)
+        self.last_accepted_samples = []
 
-    def get_dsa_columns(self, data, sample_callback=None):
+    def _is_valid_sample(self, timestamp, value):
+        if self.last_ts is not None:
+            expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
+            dt = abs((timestamp - expected).total_seconds())
+            if dt > SystemConfig.TIME_DIFF_TOLERANCE:
+                print(f"Timestamp fault:{timestamp}, expected {expected}")
+                return False
+            if value is None or np.isnan(value):
+                print(f"Invalid sample: {timestamp}, {value}")
+                return False
+        return True
+
+    def get_dsa_columns(self, data):
         if data is None or len(data) == 0:
-            return []
+            return [], []
 
         output_dsa = []
+        samples = []
 
         for ts, eeg in data:
             # continuity check
-            if self.last_ts is not None:
-                expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
-                dt = abs((ts - expected).total_seconds())
-                if dt > SystemConfig.TIME_DIFF_TOLERANCE or eeg is None or np.isnan(eeg):
-                    print(f"Timestamp fault:{ts}, expected {expected}")
-                    self.eeg_values.clear()
-                    self.timestamps.clear()
-                    self.last_ts = ts
-                    # Discontinuity: do not accept this sample into the EEG ring; skip emission
-                    continue
+            if not self._is_valid_sample(ts, eeg):
+                self.eeg_values.clear()
+                self.timestamps.clear()
+                self.last_ts = None
+                samples.append((ts.timestamp(), np.nan))
+                continue
 
             self.eeg_values.append(eeg)
             self.timestamps.append(ts)
             self.last_ts = ts
-
-            if sample_callback:
-                try:
-                    sample_callback(ts.timestamp(), float(eeg))
-                except Exception:
-                    # Fallback if ts is already a float
-                    sample_callback(float(ts), float(eeg))
+            samples.append((ts.timestamp(), float(eeg)))
 
             # while enough data exists for a window
             while len(self.eeg_values) >= self.window_len:
@@ -218,7 +222,7 @@ class EEGBuffer:
                 self.eeg_values = self.eeg_values[self.hop_len:]
                 self.timestamps = self.timestamps[self.hop_len:]
 
-        return output_dsa
+        return output_dsa, samples
 
     def apply_config(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec

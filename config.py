@@ -32,7 +32,7 @@ class SystemConfig:
     MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
     PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
     PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
-    EEG_BOUNDS: Tuple[int, int] = (-300, 300)
+    EEG_BOUNDS: Tuple[int, int] = (-100, 100)
 
 
 

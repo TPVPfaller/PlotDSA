@@ -75,15 +75,21 @@ def main():
         # Deterministic timestamping
         start_time = datetime.now()
         interval = 1.0 / SAMPLE_RATE_HZ
+        samples = []
 
         for idx, value in enumerate(values):
             ts = start_time + timedelta(seconds=idx * interval)
             ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-            sample_str = f"{ts_str},{value}"
+            samples.append(f"{ts_str},{value}")
 
             # Push to LSL
-            outlet.push_sample([sample_str])
-            time.sleep(interval)
+            if idx % SAMPLE_RATE_HZ == 0:
+                time.sleep(1.0)
+                for s in samples:
+                    outlet.push_sample([s])
+                samples = []
+
+
 
         print("All samples streamed once. Exiting.")
 

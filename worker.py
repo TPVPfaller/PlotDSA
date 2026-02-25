@@ -51,10 +51,11 @@ class ProcessingWorker(QObject):
                 continue
 
             samples = self.stream.read_samples()
-            dsa_columns = self.eeg_buffer.get_dsa_columns(
-                samples, 
-                sample_callback=lambda ts, val: self.new_sample.emit(ts, val)
-            )
+            dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
+
+            # Emit each individual sample for the EEG view
+            for ts_val, eeg_val in checked_samples:
+                self.new_sample.emit(ts_val, eeg_val)
 
             for ts, freqs, psd in dsa_columns:
                 if psd is None:
@@ -76,7 +77,6 @@ class ProcessingWorker(QObject):
                     )
 
                 self.new_data.emit(self.dsa_buffer, freqs, psd)
-                
                 self._io_executor.submit(Output.save_psd_to_csv, ts, freqs, psd)
             
             time.sleep(SystemConfig.UPDATE_STEP_SEC)
