@@ -8,6 +8,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PySide6.QtCore import QThread, QTimer
+from PySide6.QtGui import QAction
 
 from config import UserConfig
 from settings_ui import TopBar, SettingsDialog
@@ -27,9 +28,37 @@ class DSAApplication(QMainWindow):
 
         self.user_config = UserConfig()
         self.topbar = TopBar(self.user_config, self._on_config_change)
-        self.topbar.settings_btn.clicked.connect(self._open_settings)
 
         self.setWindowTitle("EEG Density Spectral Array")
+
+        # Menu bar: Settings
+        settings_menu = self.menuBar().addMenu("&Menu")
+        action_settings = QAction("System Settings...", self)
+        action_settings.setShortcut("Ctrl+,")
+        action_settings.triggered.connect(self._open_settings)
+        settings_menu.addAction(action_settings)
+
+        # view_menu = self.menuBar().addMenu("&View")
+
+        # Checkable actions to toggle views
+        # self.action_show_dsa = QAction("Show DSA", self)
+        # self.action_show_dsa.setCheckable(True)
+        # self.action_show_dsa.setChecked(True)
+        # self.action_show_dsa.toggled.connect(self._toggle_dsa)
+        # view_menu.addAction(self.action_show_dsa)
+        #
+        # self.action_show_eeg = QAction("Show EEG", self)
+        # self.action_show_eeg.setCheckable(True)
+        # self.action_show_eeg.setChecked(True)
+        # self.action_show_eeg.toggled.connect(self._toggle_eeg)
+        # view_menu.addAction(self.action_show_eeg)
+        #
+        # self.action_show_psd = QAction("Show PSD", self)
+        # self.action_show_psd.setCheckable(True)
+        # self.action_show_psd.setChecked(False)
+        # self.action_show_psd.toggled.connect(self._toggle_psd)
+        # view_menu.addAction(self.action_show_psd)
+
 
         self.thread = QThread()
         self.worker = ProcessingWorker(self.user_config)
@@ -52,7 +81,7 @@ class DSAApplication(QMainWindow):
         # Connect jump button in topbar
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
         
-        #self.psd_view = PSDView(self.user_config.psd_db_min, self.user_config.psd_db_max)
+        self.psd_view = PSDView(self.user_config.psd_db_min, self.user_config.psd_db_max)
         self.eeg_view = EEGView(self.user_config.window_sec)
 
         self.status_timer = QTimer()
@@ -63,8 +92,15 @@ class DSAApplication(QMainWindow):
         layout = QVBoxLayout(container)
         layout.addWidget(self.topbar)
         layout.addWidget(self.dsa_view)
-        #layout.addWidget(self.psd_view)
+        layout.addWidget(self.psd_view)
         layout.addWidget(self.eeg_view)
+
+        # Initialize visibility based on View menu actions
+        # self.dsa_view.setVisible(self.action_show_dsa.isChecked())
+        # self.eeg_view.setVisible(self.action_show_eeg.isChecked())
+        # self.psd_view.setVisible(self.action_show_psd.isChecked())
+        self.psd_view.setVisible(False)
+
         self.setCentralWidget(container)
 
     def closeEvent(self, event):
@@ -80,7 +116,12 @@ class DSAApplication(QMainWindow):
 
     def _on_new_data(self, dsa_buffer, freqs, psd):
         self.dsa_view.update(dsa_buffer)
-        # self.psd_view.update(freqs, psd)
+        # Update PSD view only if visible to save some work
+        try:
+            if self.psd_view.isVisible():
+                self.psd_view.update(freqs, psd)
+        except Exception:
+            pass
         # DSA cadence updates; raw EEG is updated per-sample via _on_new_sample
         self.topbar.sync_sliders(self.user_config, is_new_data=True)
         self.topbar.update_indicator(self.dsa_view)
@@ -88,6 +129,24 @@ class DSAApplication(QMainWindow):
     def _check_status(self):
         self.topbar.sync_sliders(self.user_config, is_new_data=False)
         self.topbar.update_indicator(self.dsa_view)
+
+    def _toggle_dsa(self, checked: bool):
+        try:
+            self.dsa_view.setVisible(bool(checked))
+        except Exception:
+            pass
+
+    def _toggle_eeg(self, checked: bool):
+        try:
+            self.eeg_view.setVisible(bool(checked))
+        except Exception:
+            pass
+
+    def _toggle_psd(self, checked: bool):
+        try:
+            self.psd_view.setVisible(bool(checked))
+        except Exception:
+            pass
 
     def _on_new_sample(self, t_epoch, value):
         """Receive each validated EEG sample and update the EEGView immediately."""

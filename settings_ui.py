@@ -21,11 +21,6 @@ class TopBar(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
 
-        # --- Settings Button ---
-        self.settings_btn = QPushButton("⚙ Settings")
-        self.settings_btn.setMinimumHeight(50)
-        layout.addWidget(self.settings_btn)
-        layout.setAlignment(self.settings_btn, Qt.AlignVCenter)
 
         # --- Zoom slider ---
         self.zoom_label = QLabel("Zoom:")
@@ -95,12 +90,44 @@ class TopBar(QWidget):
 
         self._last_data_receive_time = 0
 
+        self.norm_btn = QPushButton("Norm PSD")
+        self.norm_btn.setCheckable(True)
+        self.norm_btn.setChecked(self.config.normalize_psd)
+
+        self.norm_btn.setStyleSheet("""
+            QPushButton {
+                background-color: palette(button);
+                color: palette(button-text);
+                border: 1px solid palette(mid);
+                border-radius: 5px;
+                padding: 5px 10px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:checked {
+                background-color: #3daee9;
+                color: white;
+            }
+        """)
+
+        self.norm_btn.setMinimumHeight(50)
+        self.norm_btn.setMinimumWidth(100)
+
+        self.norm_btn.clicked.connect(self._normalize_toggled)
+
+        layout.addWidget(self.norm_btn)
+        layout.setAlignment(self.norm_btn, Qt.AlignVCenter)
+
     def set_stream_connected(self, connected: bool):
         """Set LSL stream connection state. DISCONNECTED indicator relies only on this."""
         try:
             self._stream_connected = bool(connected)
         except Exception:
             self._stream_connected = False
+
+    def _normalize_toggled(self, checked):
+        new_config = self.config.update(normalize_psd=bool(checked))
+        self.on_config_change(new_config)
 
     def _zoom_changed(self, value):
         min_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]

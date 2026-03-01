@@ -31,7 +31,7 @@ class DSACalculator:
         b, a = iirnotch(freq, self.notch_quality)
         return filtfilt(b, a, data)
 
-    def compute_psd_column(self, eeg_values):
+    def compute_psd_column(self, eeg_values, normalize=False):
         if len(eeg_values) < self.window_sec * self.sample_rate:
             return None, None
 
@@ -59,8 +59,8 @@ class DSACalculator:
         if np.count_nonzero(psd) < len(psd):
             return f, np.full((len(psd)), np.nan, np.float32)
 
-        psd_db = 10.0 * np.log10(psd)
-        return f, psd_db
+        return f, psd
+
 
     def update_config(self, window_sec, segment_sec, segment_overlap):
         self.window_sec = window_sec

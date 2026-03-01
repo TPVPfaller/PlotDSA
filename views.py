@@ -152,13 +152,25 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         x_start = self.t0
 
+        data = self.dsa_rect.copy()
+
+        if self.config.normalize_psd:
+            # Normalize each time column independently
+            col_sums = np.sum(data, axis=1, keepdims=True)
+            valid = col_sums > 0
+            data[valid[:, 0]] /= col_sums[valid[:, 0]]
+
+        # Convert to dB for display
+        data = 10.0 * np.log10(data)
+
         self.image.setImage(
-            self.dsa_rect,
+            data,
             autoLevels=False,
             levels=(self.PSD_DB_MIN, self.PSD_DB_MAX),
             lut=self.lut,
             nan_policy="omit",
         )
+
         self.image.setRect((
             float(x_start),
             0.0,
@@ -235,6 +247,16 @@ class DSAView(pg.GraphicsLayoutWidget):
         # Apply immediately by redrawing with current buffer if available
         if hasattr(self, "_buffer") and self._buffer is not None:
             self.update(self._buffer)
+
+            if config.normalize_psd:
+                self.PSD_DB_MIN = -40
+                self.PSD_DB_MAX = 0
+            else:
+                self.PSD_DB_MIN = config.psd_db_min
+                self.PSD_DB_MAX = config.psd_db_max
+
+            self.colorbar.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
+            self.image.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
 
     def set_zoom(self, zoom_factor: float):
         """Set zoom factor (1 = full display, >1 = zoom in)."""

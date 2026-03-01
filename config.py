@@ -32,6 +32,7 @@ class SystemConfig:
     max_freq_hz: int = 30
     psd_db_min: int = -20
     psd_db_max: int = 20
+    normalize_psd: bool = False
 
     # Bounds (class-level, not instance attributes)
     WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(UPDATE_STEP_SEC)), 60)
@@ -53,7 +54,6 @@ class UserConfig:
     Immutable at runtime; updates return a new instance.
     """
 
-    # Current values (default to SystemConfig constants for a single source of truth)
     window_sec: int = SystemConfig.window_sec
     segment_sec: float = SystemConfig.segment_sec
     segment_overlap: float = SystemConfig.segment_overlap
@@ -62,6 +62,8 @@ class UserConfig:
     max_freq_hz: int = SystemConfig.max_freq_hz
     psd_db_min: int = SystemConfig.psd_db_min
     psd_db_max: int = SystemConfig.psd_db_max
+    normalize_psd: bool = SystemConfig.normalize_psd
+
 
     def __post_init__(self):
         """Validate on creation."""
