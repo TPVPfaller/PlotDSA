@@ -21,16 +21,22 @@ class TopBar(QWidget):
         self.settings_btn = QPushButton("⚙ Settings")
         self.settings_btn.setMinimumHeight(50)
         layout.addWidget(self.settings_btn)
+        layout.setAlignment(self.settings_btn, Qt.AlignVCenter)
 
         # --- Zoom slider ---
-        layout.addWidget(QLabel("Zoom:"))
+        self.zoom_label = QLabel("Zoom:")
+        self.zoom_label.setMinimumHeight(50)
+        layout.addWidget(self.zoom_label)
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
         self.zoom_slider.setValue(int(config.display_minutes/SystemConfig.DISPLAY_MINUTES_BOUNDS[1])*100)
-        self.zoom_slider.setMinimumHeight(50)
+        #self.zoom_slider.setMinimumHeight(50)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
+        # Center the zoom controls vertically within the top bar
+        layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
+        layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
 
         # Sync initial values
         self.sync_sliders(config)
@@ -47,10 +53,11 @@ class TopBar(QWidget):
                             font-size: 11px;
                         }
                     """)
-        self.live_indicator.setMinimumHeight(20)
+        self.live_indicator.setMinimumHeight(50)
         self.live_indicator.setMinimumWidth(110)
         self.live_indicator.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.live_indicator)
+        layout.setAlignment(self.live_indicator, Qt.AlignVCenter)
 
         self.live_btn = QPushButton("▶ Live")
         self.live_btn.setStyleSheet("""
@@ -70,7 +77,7 @@ class TopBar(QWidget):
                 background-color: #333;
             }
         """)
-        self.live_btn.setMinimumHeight(20)
+        self.live_btn.setMinimumHeight(50)
         self.live_btn.setMinimumWidth(80) # Reserve enough space
         
         # Ensure the button occupies space even when hidden, so the layout doesn't jump
@@ -80,6 +87,7 @@ class TopBar(QWidget):
         
         self.live_btn.hide() # Hidden initially
         layout.addWidget(self.live_btn)
+        layout.setAlignment(self.live_btn, Qt.AlignVCenter)
 
         self._last_data_receive_time = 0
 
@@ -116,27 +124,35 @@ class TopBar(QWidget):
         self.zoom_slider.blockSignals(False)
 
     def update_indicator(self, dsa_view):
-        """Update live/review/disconnected indicator based on DSA state and data flow."""
+        """Update live/review/disconnected indicator and Live button visibility.
+        Rule: The 'Jump to Live' button must NOT be shown when there is no DSA data.
+        It should only be visible when there is historical data (review mode) to jump from.
+        """
         import time
         dsa = dsa_view
 
-        # --- 1. Determine LIVE vs REVIEW status based on view position ---
+        # Determine if we have any DSA data yet
+        has_data = False
+        try:
+            if hasattr(dsa, "_buffer") and getattr(dsa, "_buffer") is not None:
+                last_ts = dsa._buffer.get_last_timestamp()
+                if last_ts is not None and np.isfinite(float(last_ts)):
+                    has_data = True
+        except Exception:
+            has_data = False
+
+        # Determine LIVE vs REVIEW status based on view position (only meaningful if we have data)
         is_live = False
-        if hasattr(dsa, "is_last_dsa_visible"):
-            is_live = dsa.is_last_dsa_visible()
-        elif hasattr(dsa, "_live_mode"):
-            is_live = dsa._live_mode
+        if has_data:
+            if hasattr(dsa, "is_last_dsa_visible"):
+                is_live = dsa.is_last_dsa_visible()
+            elif hasattr(dsa, "_live_mode"):
+                is_live = bool(dsa._live_mode)
 
-        # Show button only in REVIEW mode (not live), regardless of connection status
-        if is_live:
-            self.live_btn.hide()
-        else:
-            self.live_btn.show()
-
-        # --- 2. Update Indicator Text/Color based on connection and view position ---
+        # --- Connection/flow status and indicator text ---
         now = time.time()
-        # If no data for more than 2.0 seconds, or no data yet, show disconnected
-        if self._last_data_receive_time == 0 or (now - self._last_data_receive_time) > 2.0:
+        disconnected = (self._last_data_receive_time == 0 or (now - self._last_data_receive_time) > 2.0)
+        if disconnected:
             self.live_indicator.setText("DISCONNECTED")
             self.live_indicator.setStyleSheet("""
                 QLabel {
@@ -148,32 +164,38 @@ class TopBar(QWidget):
                     font-size: 11px;
                 }
             """)
-            return
-
-        if is_live:
-            self.live_indicator.setText("LIVE")
-            self.live_indicator.setStyleSheet("""
-                QLabel {
-                    color: white;
-                    background-color: green;
-                    padding: 5px 10px;
-                    border-radius: 5px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-            """)
         else:
-            self.live_indicator.setText("REVIEW")
-            self.live_indicator.setStyleSheet("""
-                QLabel {
-                    color: white;
-                    background-color: gray;
-                    padding: 5px 10px;
-                    border-radius: 5px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-            """)
+            if is_live:
+                self.live_indicator.setText("LIVE")
+                self.live_indicator.setStyleSheet("""
+                    QLabel {
+                        color: white;
+                        background-color: green;
+                        padding: 5px 10px;
+                        border-radius: 5px;
+                        font-weight: bold;
+                        font-size: 11px;
+                    }
+                """)
+            else:
+                self.live_indicator.setText("REVIEW")
+                self.live_indicator.setStyleSheet("""
+                    QLabel {
+                        color: white;
+                        background-color: gray;
+                        padding: 5px 10px;
+                        border-radius: 5px;
+                        font-weight: bold;
+                        font-size: 11px;
+                    }
+                """)
+
+        # --- Live button visibility rule ---
+        # Show only if: we have data AND we are not at live (i.e., in review)
+        if has_data and (not is_live):
+            self.live_btn.show()
+        else:
+            self.live_btn.hide()
 
 
 class SettingsDialog(QDialog):
@@ -219,7 +241,7 @@ class SettingsDialog(QDialog):
 
         add_slider("Window (s)", SystemConfig.WINDOW_SEC_BOUNDS, config.window_sec, 10)
         add_slider("Segment (s)", SystemConfig.SEGMENT_SEC_BOUNDS, config.segment_sec, 10)
-        add_slider("Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.overlap, 100)
+        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100)
         add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100)
         add_slider("Max Frequency (Hz)", SystemConfig.MAX_FREQ_HZ_BOUNDS, config.max_freq_hz, 1)
 
@@ -238,7 +260,7 @@ class SettingsDialog(QDialog):
             new_config = self.config.update(
                 window_sec=self.sliders["Window (s)"][0].value() / 10,
                 segment_sec=self.sliders["Segment (s)"][0].value() / 10,
-                overlap=self.sliders["Overlap"][0].value() / 100,
+                window_overlap=self.sliders["Window Overlap"][0].value() / 100,
                 segment_overlap=self.sliders["Segment Overlap"][0].value() / 100,
                 max_freq_hz=self.sliders["Max Frequency (Hz)"][0].value()
             )
