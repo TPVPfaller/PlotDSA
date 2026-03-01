@@ -40,6 +40,9 @@ class DSAApplication(QMainWindow):
         self.worker.new_data.connect(self._on_new_data)
         # Per-sample raw EEG updates
         self.worker.new_sample.connect(self._on_new_sample)
+        # Stream connection status → TopBar indicator
+        if hasattr(self.worker, 'connection_changed'):
+            self.worker.connection_changed.connect(self.topbar.set_stream_connected)
 
         self.thread.start()
 

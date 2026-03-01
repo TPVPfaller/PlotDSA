@@ -7,7 +7,7 @@ Centralized configuration definition and validation.
 
 from dataclasses import dataclass, field
 from typing import Tuple
-
+import math
 
 class SystemConfig:
     """
@@ -23,11 +23,21 @@ class SystemConfig:
     BASE_DIR: str = "C:\\temp\\VSCaptureWave"
     EEG_VIEW_WINDOW_SEC: float = 4.0
 
+    # Default values
+    window_sec: int = 4
+    segment_sec: float = 2.0
+    segment_overlap: float = 0.5
+    window_overlap: float = 0.85
+    display_minutes: float = 10.0
+    max_freq_hz: int = 30
+    psd_db_min: int = -20
+    psd_db_max: int = 20
+
     # Bounds (class-level, not instance attributes)
-    WINDOW_SEC_BOUNDS: Tuple[float, float] = (UPDATE_STEP_SEC, 60.0)
+    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(UPDATE_STEP_SEC)), 60)
     SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
-    WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 1.0) # exclusive
-    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 1.0) # exclusive
+    WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
+    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
     DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 300.0)
     MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
     PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
@@ -43,15 +53,15 @@ class UserConfig:
     Immutable at runtime; updates return a new instance.
     """
 
-    # Current values
-    window_sec: float = 4.0
-    segment_sec: float = 2.0
-    segment_overlap: float = 0.5
-    window_overlap: float = 0.85
-    display_minutes: float = 10.0
-    max_freq_hz: int = 30
-    psd_db_min: int = -20
-    psd_db_max: int = 20
+    # Current values (default to SystemConfig constants for a single source of truth)
+    window_sec: int = SystemConfig.window_sec
+    segment_sec: float = SystemConfig.segment_sec
+    segment_overlap: float = SystemConfig.segment_overlap
+    window_overlap: float = SystemConfig.window_overlap
+    display_minutes: float = SystemConfig.display_minutes
+    max_freq_hz: int = SystemConfig.max_freq_hz
+    psd_db_min: int = SystemConfig.psd_db_min
+    psd_db_max: int = SystemConfig.psd_db_max
 
     def __post_init__(self):
         """Validate on creation."""
@@ -68,19 +78,6 @@ class UserConfig:
         self._check_bounds("max_freq_hz", self.max_freq_hz, SystemConfig.MAX_FREQ_HZ_BOUNDS)
         self._check_bounds("psd_db_min", self.psd_db_min, SystemConfig.PSD_DB_MIN_BOUNDS)
         self._check_bounds("psd_db_max", self.psd_db_max, SystemConfig.PSD_DB_MAX_BOUNDS)
-
-        # Exclusive bounds for overlaps
-        if not (SystemConfig.WINDOW_OVERLAP_BOUNDS[0] < self.window_overlap < SystemConfig.WINDOW_OVERLAP_BOUNDS[1]):
-            raise ValueError(
-                f"overlap must be between {SystemConfig.WINDOW_OVERLAP_BOUNDS[0]} and {SystemConfig.WINDOW_OVERLAP_BOUNDS[1]} (exclusive), "
-                f"got {self.window_overlap}"
-            )
-
-        if not (SystemConfig.SEGMENT_OVERLAP_BOUNDS[0] < self.segment_overlap < SystemConfig.SEGMENT_OVERLAP_BOUNDS[1]):
-            raise ValueError(
-                f"segment_overlap must be between {SystemConfig.SEGMENT_OVERLAP_BOUNDS[0]} and "
-                f"{SystemConfig.SEGMENT_OVERLAP_BOUNDS[1]} (exclusive), got {self.segment_overlap}"
-            )
 
         # Cross-field validation
         if self.segment_sec > self.window_sec:

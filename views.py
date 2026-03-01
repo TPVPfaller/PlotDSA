@@ -2,7 +2,6 @@ import pyqtgraph as pg
 import datetime
 from config import SystemConfig
 from pyqtgraph import ColorBarItem
-from PySide6.QtWidgets import QPinchGesture, QGestureEvent, QPushButton, QGraphicsProxyWidget, QSizePolicy
 from PySide6.QtCore import Qt, QEvent, Signal
 import numpy as np
 from collections import deque

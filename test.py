@@ -4,7 +4,7 @@ import pytest
 
 from calculations import DSACalculator
 from config import SystemConfig
-from main import EEGBuffer, DSABuffer   # adjust import if main file named differently
+from data import EEGBuffer, DSABuffer   # adjust import if main file named differently
 
 
 # ------------------------------------------------------------

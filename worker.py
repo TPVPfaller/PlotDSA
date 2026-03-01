@@ -9,6 +9,7 @@ from config import SystemConfig
 class ProcessingWorker(QObject):
     new_data = Signal(object, object, object)  # dsa_buffer, freqs, psd
     new_sample = Signal(float, float)  # epoch_seconds, eeg_value
+    connection_changed = Signal(bool)  # LSL connection state
 
     def __init__(self, config):
         super().__init__()
@@ -17,6 +18,7 @@ class ProcessingWorker(QObject):
         self._new_config = None
 
         self.stream = EEGStream()
+        self._last_connection_state = self.stream.receiving
         self.eeg_buffer = EEGBuffer(
             self.config.window_sec,
             self.config.segment_sec,
@@ -32,6 +34,12 @@ class ProcessingWorker(QObject):
 
     @Slot()
     def run(self):
+        # Emit initial connection state
+        try:
+            self.connection_changed.emit(bool(self.stream.receiving))
+        except Exception:
+            pass
+        
         while self.running:
             # Apply new config if available
             if self._new_config:
@@ -47,10 +55,26 @@ class ProcessingWorker(QObject):
 
             if not self.stream.receiving:
                 self.stream.connect()
+                # Emit on change
+                if self.stream.receiving != self._last_connection_state:
+                    self._last_connection_state = self.stream.receiving
+                    try:
+                        self.connection_changed.emit(bool(self.stream.receiving))
+                    except Exception:
+                        pass
                 time.sleep(0.5)
                 continue
 
+            # Connected: read any available samples
             samples = self.stream.read_samples()
+            # Emit connection change if state flipped unexpectedly
+            if self.stream.receiving != self._last_connection_state:
+                self._last_connection_state = self.stream.receiving
+                try:
+                    self.connection_changed.emit(bool(self.stream.receiving))
+                except Exception:
+                    pass
+
             dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
 
             # Emit each individual sample for the EEG view
