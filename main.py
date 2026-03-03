@@ -38,26 +38,25 @@ class DSAApplication(QMainWindow):
         action_settings.triggered.connect(self._open_settings)
         settings_menu.addAction(action_settings)
 
-        # view_menu = self.menuBar().addMenu("&View")
+        view_menu = self.menuBar().addMenu("&View")
 
-        # Checkable actions to toggle views
-        # self.action_show_dsa = QAction("Show DSA", self)
-        # self.action_show_dsa.setCheckable(True)
-        # self.action_show_dsa.setChecked(True)
-        # self.action_show_dsa.toggled.connect(self._toggle_dsa)
-        # view_menu.addAction(self.action_show_dsa)
-        #
-        # self.action_show_eeg = QAction("Show EEG", self)
-        # self.action_show_eeg.setCheckable(True)
-        # self.action_show_eeg.setChecked(True)
-        # self.action_show_eeg.toggled.connect(self._toggle_eeg)
-        # view_menu.addAction(self.action_show_eeg)
-        #
-        # self.action_show_psd = QAction("Show PSD", self)
-        # self.action_show_psd.setCheckable(True)
-        # self.action_show_psd.setChecked(False)
-        # self.action_show_psd.toggled.connect(self._toggle_psd)
-        # view_menu.addAction(self.action_show_psd)
+        self.action_show_dsa = QAction("Show DSA", self)
+        self.action_show_dsa.setCheckable(True)
+        self.action_show_dsa.setChecked(True)
+        self.action_show_dsa.toggled.connect(self._toggle_dsa)
+        view_menu.addAction(self.action_show_dsa)
+
+        self.action_show_eeg = QAction("Show EEG", self)
+        self.action_show_eeg.setCheckable(True)
+        self.action_show_eeg.setChecked(True)
+        self.action_show_eeg.toggled.connect(self._toggle_eeg)
+        view_menu.addAction(self.action_show_eeg)
+
+        self.action_show_psd = QAction("Show PSD", self)
+        self.action_show_psd.setCheckable(True)
+        self.action_show_psd.setChecked(False)
+        self.action_show_psd.toggled.connect(self._toggle_psd)
+        view_menu.addAction(self.action_show_psd)
 
 
         self.thread = QThread()
@@ -96,12 +95,16 @@ class DSAApplication(QMainWindow):
         layout.addWidget(self.eeg_view)
 
         # Initialize visibility based on View menu actions
-        # self.dsa_view.setVisible(self.action_show_dsa.isChecked())
-        # self.eeg_view.setVisible(self.action_show_eeg.isChecked())
-        # self.psd_view.setVisible(self.action_show_psd.isChecked())
-        self.psd_view.setVisible(False)
+        self.dsa_view.setVisible(self.action_show_dsa.isChecked())
+        self.eeg_view.setVisible(self.action_show_eeg.isChecked())
+        self.psd_view.setVisible(self.action_show_psd.isChecked())
 
         self.setCentralWidget(container)
+
+        layout.setStretchFactor(self.topbar, 0)
+        layout.setStretchFactor(self.dsa_view, 1)
+        layout.setStretchFactor(self.psd_view, 1)
+        layout.setStretchFactor(self.eeg_view, 1)
 
     def closeEvent(self, event):
         """Ensure background threads are stopped before closing."""
@@ -133,18 +136,23 @@ class DSAApplication(QMainWindow):
     def _toggle_dsa(self, checked: bool):
         try:
             self.dsa_view.setVisible(bool(checked))
+            self.centralWidget().layout().invalidate()
+            self.centralWidget().updateGeometry()
         except Exception:
             pass
-
     def _toggle_eeg(self, checked: bool):
         try:
             self.eeg_view.setVisible(bool(checked))
+            self.centralWidget().layout().invalidate()
+            self.centralWidget().updateGeometry()
         except Exception:
             pass
 
     def _toggle_psd(self, checked: bool):
         try:
             self.psd_view.setVisible(bool(checked))
+            self.centralWidget().layout().invalidate()
+            self.centralWidget().updateGeometry()
         except Exception:
             pass
 

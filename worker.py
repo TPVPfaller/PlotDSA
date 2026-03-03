@@ -23,8 +23,7 @@ class ProcessingWorker(QObject):
             self.config.window_sec,
             self.config.segment_sec,
             self.config.segment_overlap,
-            self.config.window_overlap,
-            self.config.normalize_psd
+            self.config.window_overlap
         )
         self.dsa_buffer = DSABuffer(self.config.segment_sec)
         self._io_executor = ThreadPoolExecutor(max_workers=1)
@@ -50,8 +49,7 @@ class ProcessingWorker(QObject):
                     self.config.window_sec,
                     self.config.segment_sec,
                     self.config.segment_overlap,
-                    self.config.window_overlap,
-                    self.config.normalize_psd
+                    self.config.window_overlap
                 )
                 self.dsa_buffer.apply_config(self.config.segment_sec)
 

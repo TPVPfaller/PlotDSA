@@ -162,7 +162,7 @@ class EEGBuffer:
     - Uses DSACalculator to compute a PSD for each full window and advances by `hop_len` samples.
     - Exposes `last_accepted_samples` so UI (EEGView) can update per-sample with validated data.
     """
-    def __init__(self, window_sec, segment_sec, segment_overlap, overlap, normalize_psd):
+    def __init__(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
         self.timestamps = []
         self.eeg_values = []
@@ -171,7 +171,6 @@ class EEGBuffer:
         self.processor = DSACalculator(window_sec, segment_sec, segment_overlap)
         self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
         self.hop_len = int(self.window_len * (1.0 - overlap))
-        self.normalize_psd = normalize_psd
         if self.hop_len < 1:
             self.hop_len = 1
         # Will be filled by `get_dsa_columns` with tuples (epoch_seconds, value)
@@ -215,7 +214,7 @@ class EEGBuffer:
                 window = self.eeg_values[:self.window_len]
                 window_ts = self.timestamps[self.window_len - 1]
 
-                f, psd = self.processor.compute_psd_column(window.copy(), self.normalize_psd)
+                f, psd = self.processor.compute_psd_column(window.copy())
 
                 output_dsa.append((window_ts.timestamp() - self.window_sec, f, psd))
 
@@ -225,14 +224,13 @@ class EEGBuffer:
 
         return output_dsa, samples
 
-    def apply_config(self, window_sec, segment_sec, segment_overlap, overlap, normalize_psd):
+    def apply_config(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
         self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
         self.hop_len = int(self.window_len * (1.0 - overlap))
         if self.hop_len < 1:
             self.hop_len = 1
         self.processor.update_config(window_sec, segment_sec, segment_overlap)
-        self.normalize_psd = normalize_psd
 
 
 class EEGStream:

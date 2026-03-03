@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea
 )
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox
 from PySide6.QtCore import Qt
 from config import SystemConfig
 import numpy as np
@@ -90,33 +90,24 @@ class TopBar(QWidget):
 
         self._last_data_receive_time = 0
 
-        self.norm_btn = QPushButton("Norm PSD")
-        self.norm_btn.setCheckable(True)
-        self.norm_btn.setChecked(self.config.normalize_psd)
+        # --- PSD Normalization Checkbox ---
+        self.norm_checkbox = QCheckBox("Relative PSD")
+        self.norm_checkbox.setChecked(self.config.normalize_psd)
+        self.norm_checkbox.setMinimumHeight(60)
 
-        self.norm_btn.setStyleSheet("""
-            QPushButton {
-                background-color: palette(button);
-                color: palette(button-text);
-                border: 1px solid palette(mid);
-                border-radius: 5px;
-                padding: 5px 10px;
+        self.norm_checkbox.setStyleSheet("""
+            QCheckBox {
                 font-weight: bold;
                 font-size: 11px;
-            }
-            QPushButton:checked {
-                background-color: #3daee9;
-                color: white;
+                padding: 5px;
             }
         """)
 
-        self.norm_btn.setMinimumHeight(50)
-        self.norm_btn.setMinimumWidth(100)
+        self.norm_checkbox.toggled.connect(self._normalize_toggled)
 
-        self.norm_btn.clicked.connect(self._normalize_toggled)
+        layout.addWidget(self.norm_checkbox)
+        layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
 
-        layout.addWidget(self.norm_btn)
-        layout.setAlignment(self.norm_btn, Qt.AlignVCenter)
 
     def set_stream_connected(self, connected: bool):
         """Set LSL stream connection state. DISCONNECTED indicator relies only on this."""
@@ -128,6 +119,8 @@ class TopBar(QWidget):
     def _normalize_toggled(self, checked):
         new_config = self.config.update(normalize_psd=bool(checked))
         self.on_config_change(new_config)
+
+
 
     def _zoom_changed(self, value):
         min_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
@@ -160,6 +153,7 @@ class TopBar(QWidget):
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(np.round(val_zoom)))
         self.zoom_slider.blockSignals(False)
+
 
     def update_indicator(self, dsa_view):
         """Update live/review/disconnected indicator and Live button visibility.

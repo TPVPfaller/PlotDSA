@@ -24,7 +24,7 @@ class SystemConfig:
     EEG_VIEW_WINDOW_SEC: float = 4.0
 
     # Default values
-    window_sec: int = 4
+    window_sec: int = 9
     segment_sec: float = 2.0
     segment_overlap: float = 0.5
     window_overlap: float = 0.85

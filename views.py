@@ -160,6 +160,14 @@ class DSAView(pg.GraphicsLayoutWidget):
             valid = col_sums > 0
             data[valid[:, 0]] /= col_sums[valid[:, 0]]
 
+            self.PSD_DB_MIN = -40
+            self.PSD_DB_MAX = -5
+            self.colorbar.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
+            self.image.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
+        else:
+            self.PSD_DB_MIN = self.config.psd_db_min
+            self.PSD_DB_MAX = self.config.psd_db_max
+
         # Convert to dB for display
         data = 10.0 * np.log10(data)
 
@@ -204,6 +212,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         return is_visible
 
+
     def jump_to_live(self):
         """Reset view to latest available data."""
         print("Jumping to live mode...")
@@ -243,20 +252,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self.DISPLAY_MINUTES != config.display_minutes:
             self.DISPLAY_MINUTES = config.display_minutes
             self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.UPDATE_STEP_SEC)
-
-        # Apply immediately by redrawing with current buffer if available
-        if hasattr(self, "_buffer") and self._buffer is not None:
+        if hasattr(self, "_buffer"):
             self.update(self._buffer)
-
-            if config.normalize_psd:
-                self.PSD_DB_MIN = -40
-                self.PSD_DB_MAX = 0
-            else:
-                self.PSD_DB_MIN = config.psd_db_min
-                self.PSD_DB_MAX = config.psd_db_max
-
-            self.colorbar.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
-            self.image.setLevels((self.PSD_DB_MIN, self.PSD_DB_MAX))
 
     def set_zoom(self, zoom_factor: float):
         """Set zoom factor (1 = full display, >1 = zoom in)."""
