@@ -5,6 +5,7 @@ from pyqtgraph import ColorBarItem
 from PySide6.QtCore import Qt, QEvent, Signal
 import numpy as np
 from collections import deque
+from PySide6.QtCore import QTimer
 
 
 class DSAView(pg.GraphicsLayoutWidget):
@@ -70,7 +71,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= self.MAX_FREQ_HZ)
         self.n_freq_bins = len(freq_bins[mask])
-        self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.UPDATE_STEP_SEC)
+        self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.TIME_RESOLUTION)
 
         self.dsa_rect = np.full((self.n_time_bins, self.n_freq_bins), np.nan, dtype=np.float32)
 
@@ -94,6 +95,8 @@ class DSAView(pg.GraphicsLayoutWidget):
                 self.MAX_FREQ_HZ  # height
             )
         )
+
+        pg.setConfigOptions(antialias=False)
 
     def _init_colormap(self):
         colors = [
@@ -122,7 +125,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._buffer = dsa_buffer
 
         visible_width_sec = float(self.DISPLAY_MINUTES * 60)
-        n_visible_bins = max(1, int(visible_width_sec / SystemConfig.UPDATE_STEP_SEC))
+        n_visible_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
 
         data_span_sec = float(dsa_buffer.get_last_timestamp() - dsa_buffer.t0) if dsa_buffer.t0 else 0.0
         max_offset = max(0.0, data_span_sec - visible_width_sec)
@@ -152,9 +155,10 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         x_start = self.t0
 
-        data = self.dsa_rect.copy()
+        data = self.dsa_rect
 
         if self.config.normalize_psd:
+            data = data.copy()
             # Normalize each time column independently
             col_sums = np.sum(data, axis=1, keepdims=True)
             valid = col_sums > 0
@@ -173,9 +177,6 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self.image.setImage(
             data,
-            autoLevels=False,
-            levels=(self.PSD_DB_MIN, self.PSD_DB_MAX),
-            lut=self.lut,
             nan_policy="omit",
         )
 
@@ -185,8 +186,10 @@ class DSAView(pg.GraphicsLayoutWidget):
             float(visible_width_sec),
             float(self.MAX_FREQ_HZ)
         ))
-        self.plot.setXRange(float(x_start), float(x_start + visible_width_sec), padding=0)
-        self.plot.setYRange(0, float(self.MAX_FREQ_HZ), padding=0)
+        if self.plot.viewRange()[0] != [x_start, x_start + visible_width_sec]:
+            self.plot.setXRange(float(x_start), float(x_start + visible_width_sec), padding=0)
+            self.plot.setYRange(0, float(self.MAX_FREQ_HZ), padding=0)
+
 
     def is_last_dsa_visible(self):
         """Check if the timestamp of the last available DSA column is within display bounds."""
@@ -205,9 +208,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         visible_width_sec = float(self.DISPLAY_MINUTES * 60)
 
-        # t0 is the start of the current visible window (x_start in update)
-        # Use a more generous epsilon (half an UPDATE_STEP) to handle discrete bin boundaries
-        eps = float(SystemConfig.UPDATE_STEP_SEC) * 0.5
+        eps = float(SystemConfig.TIME_RESOLUTION) * 0.5
         is_visible = (self.t0 <= last_ts_val <= self.t0 + visible_width_sec + eps)
 
         return is_visible
@@ -251,7 +252,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         # Update horizontal time resolution if display window changed
         if self.DISPLAY_MINUTES != config.display_minutes:
             self.DISPLAY_MINUTES = config.display_minutes
-            self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.UPDATE_STEP_SEC)
+            self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.TIME_RESOLUTION)
         if hasattr(self, "_buffer"):
             self.update(self._buffer)
 
@@ -350,7 +351,7 @@ class DSAView(pg.GraphicsLayoutWidget):
                 else:
                     # Fallback if callback not set
                     self.DISPLAY_MINUTES = new_minutes
-                    self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.UPDATE_STEP_SEC)
+                    self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.TIME_RESOLUTION)
                     if hasattr(self, "_buffer"):
                         self.update(self._buffer)
         return True
@@ -374,10 +375,10 @@ class PSDView(pg.PlotWidget):
             PSD_DB_MAX + 15
         )
 
-    def update(self, freqs, psd_db):
-        if freqs is None or psd_db is None:
+    def update(self, freqs, psd):
+        if freqs is None or psd is None:
             return
-
+        psd_db = 10.0 * np.log10(psd)
         self.curve.setData(freqs, psd_db)
 
     def apply_config(self, PSD_DB_MIN, PSD_DB_MAX):
@@ -388,121 +389,70 @@ class PSDView(pg.PlotWidget):
 
 
 class EEGView(pg.PlotWidget):
-    """
-    Displays the raw EEG time-series in a fixed circular buffer.
+    """Real-time circular EEG display with smooth sweep line."""
 
-    Uses a two-buffer design to keep data revelation in sync with the sweep line:
-
-      PENDING QUEUE  →  append_sample() pushes (wall_time, value) tuples here.
-      DISPLAY BUFFER →  _render_frame() drains from pending into display only for
-                        samples whose scheduled wall-clock time has been reached,
-                        so data never appears ahead of the sweep line.
-
-    The sweep line position is computed from wall-clock time alone, making it
-    perfectly smooth at RENDER_HZ regardless of how data arrives.
-    """
-
-    RENDER_HZ = 30  # repaint rate (Hz)
+    RENDER_HZ = 20
 
     def __init__(self, window_sec: float):
         super().__init__()
+
+        # --- Plot setup ---
         self.setLabel("left", "EEG", units="µV")
-        self.setMenuEnabled(False)
         self.showGrid(x=True, y=True)
+        self.setMenuEnabled(False)
         self.setClipToView(True)
-        self.setDownsampling(mode='peak')
+        self.setDownsampling(mode="peak")
+        self.setMouseEnabled(False, False)
         self.setInteractive(False)
-        self.setMouseEnabled(x=False, y=False)
-
-        self.N = int(round(SystemConfig.EEG_VIEW_WINDOW_SEC * SystemConfig.SAMPLE_RATE_HZ))
-
-        # Display buffer — what is actually rendered. Starts full of NaN.
-        self.display = np.full(self.N, np.nan, dtype=np.float32)
-
-        # Display head: index of the last slot written into display (-1 = empty)
-        self.display_head = -1
-
-        # x-axis positions in seconds (static, never changes)
-        self.x = np.linspace(0.0, SystemConfig.EEG_VIEW_WINDOW_SEC, self.N, endpoint=False)
-
-        # Gap (blank region swept ahead of the line)
-        self.gap_sec = 0.1
-        self.gap_samples = max(1, int(round(self.gap_sec * SystemConfig.SAMPLE_RATE_HZ)))
 
         self.curve = self.plot(pen=pg.mkPen((0, 200, 255), width=2))
-
-        # Second curve drawn at y=0 wherever display has NaN (signal fault indicator)
         self.fault_curve = self.plot(pen=pg.mkPen((220, 50, 50), width=2))
-
-        self.update_line = pg.InfiniteLine(
-            pos=0, angle=90,
-            pen=pg.mkPen('w', width=1, style=Qt.DashLine)
-        )
+        self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
         self.addItem(self.update_line)
 
-        self.setXRange(0.0, SystemConfig.EEG_VIEW_WINDOW_SEC, padding=0)
+        self.N = int(SystemConfig.EEG_VIEW_WINDOW_SEC * SystemConfig.SAMPLE_RATE_HZ)
+        self.display = np.full(self.N, np.nan, np.float32)
+        self.display_head = -1
+
+        self.x = np.linspace(0, SystemConfig.EEG_VIEW_WINDOW_SEC, self.N, endpoint=False)
+        self.gap_samples = max(1, int(0.1 * SystemConfig.SAMPLE_RATE_HZ))
+
+        self._pending = deque()
+        self._sample_period = 1.0 / SystemConfig.SAMPLE_RATE_HZ
+        self._last_rendered_head = -1
+
+        self._y_plot = np.empty_like(self.display)
+        self._fault_plot = np.empty_like(self.display)
+
+        self.setXRange(0, SystemConfig.EEG_VIEW_WINDOW_SEC, padding=0)
         self.setYRange(-100, 100, padding=0)
 
-        # ------------------------------------------------------------------
-        # Pending queue: deque of (scheduled_wall_time, value) tuples.
-        # append_sample() pushes here; _render_frame() drains what is due.
-        # ------------------------------------------------------------------
-        self._pending = deque()
-        self._sample_period: float = 1.0 / SystemConfig.SAMPLE_RATE_HZ
+        self._timer = QTimer(self)
+        self._timer.setTimerType(Qt.PreciseTimer)
+        self._timer.timeout.connect(self._render_frame)
+        self._timer.start(int(1000 / self.RENDER_HZ))
 
-        # Render timer
-        from PySide6.QtCore import QTimer
-        self._render_timer = QTimer(self)
-        self._render_timer.setTimerType(Qt.PreciseTimer)
-        self._render_timer.timeout.connect(self._render_frame)
-        self._render_timer.start(int(1000 / self.RENDER_HZ))
-
-        self._last_rendered_head: int = -2
-
-    # ------------------------------------------------------------------
-    # Data ingestion  (called at up to 400 Hz via Qt signal)
     # ------------------------------------------------------------------
 
     def append_sample(self, ts: float, val):
-        """
-        Schedule a sample for future display.
-
-        Samples are scheduled relative to their arrival wall-clock time so
-        that a chunk of N samples received at time T is spread evenly over
-        the next N * sample_period seconds — keeping the pending queue
-        continuously fed and the sweep line moving without stalls.
-        """
-        if ts is None or val is None:
+        if val is None:
             return
 
-        import time as _time
-        now = _time.perf_counter()
-
-        # Schedule from the tail of the pending queue (or now if empty/past)
-        if self._pending:
-            # Next sample slots in one sample-period after the last queued one
-            last_scheduled = self._pending[-1][0]
-            scheduled = max(last_scheduled + self._sample_period, now)
-        else:
-            # Queue is empty: schedule just ahead of now so it drains immediately
-            # but future samples in this chunk will be spaced from here
-            scheduled = now
-
+        import time
+        now = time.perf_counter()
+        last = self._pending[-1][0] if self._pending else now
+        scheduled = max(last + self._sample_period, now)
         self._pending.append((scheduled, val))
 
     # ------------------------------------------------------------------
-    # Rendering  (called by QTimer at RENDER_HZ, on the UI thread)
-    # ------------------------------------------------------------------
 
     def _render_frame(self):
-        """Drain pending samples that are due, update sweep line, redraw."""
         if not self._pending and self.display_head < 0:
             return
 
-        import time as _time
-        now = _time.perf_counter()
+        import time
+        now = time.perf_counter()
 
-        # Drain all samples whose scheduled time has arrived
         changed = False
         while self._pending and self._pending[0][0] <= now:
             _, v = self._pending.popleft()
@@ -510,38 +460,41 @@ class EEGView(pg.PlotWidget):
             self.display[self.display_head] = v
             changed = True
 
-        # --- Sweep line: interpolate continuously from wall clock ---
+        # --- Interpolated head ---
         if self._pending:
-            # Interpolate: how far into the gap before the next sample?
             next_wall = self._pending[0][0]
             prev_wall = next_wall - self._sample_period
-            frac = max(0.0, min(1.0, (now - prev_wall) / self._sample_period))
-            interp_head_idx = (self.display_head + frac) % self.N
+            frac = np.clip((now - prev_wall) / self._sample_period, 0, 1)
+            interp_head = (self.display_head + frac) % self.N
         else:
-            # Queue empty (stream paused or caught up): park at display_head
             if self.display_head < 0:
                 return
-            interp_head_idx = float(self.display_head)
+            interp_head = float(self.display_head)
 
-        x_head = (interp_head_idx / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC
-        self.update_line.setPos(x_head)
+        self.update_line.setPos(
+            (interp_head / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC
+        )
 
-        # --- Curve: redraw whenever display_head advanced or gap slot changed ---
-        interp_head_int = int(interp_head_idx) % self.N
-        if changed or interp_head_int != self._last_rendered_head:
-            self._last_rendered_head = interp_head_int
-            y_plot = self.display.copy()
+        head_int = int(interp_head) % self.N
+        if not changed and head_int == self._last_rendered_head:
+            return
 
-            # Fault curve: 0 where display buffer is NaN (signal fault/discontinuity).
-            # Computed from the raw display before blanking the gap, so the gap
-            # (intentional NaN) is excluded by zeroing it out afterwards.
-            fault_plot = np.where(np.isnan(y_plot), 0.0, np.nan).astype(np.float32)
+        self._last_rendered_head = head_int
 
-            # Blank the gap ahead of the sweep line in both curves
-            gap_indices = [(interp_head_int + i) % self.N for i in range(1, self.gap_samples + 1)]
-            for idx in gap_indices:
-                y_plot[idx] = np.nan
-                fault_plot[idx] = np.nan
+        np.copyto(self._y_plot, self.display)
+        np.copyto(self._fault_plot,
+                  np.where(np.isnan(self._y_plot), 0.0, np.nan))
 
-            self.curve.setData(self.x, y_plot)
-            self.fault_curve.setData(self.x, fault_plot)
+        # --- Blank gap ---
+        end = head_int + self.gap_samples + 1
+        if end < self.N:
+            self._y_plot[head_int + 1:end] = np.nan
+            self._fault_plot[head_int + 1:end] = np.nan
+        else:
+            self._y_plot[head_int + 1:] = np.nan
+            self._y_plot[:end % self.N] = np.nan
+            self._fault_plot[head_int + 1:] = np.nan
+            self._fault_plot[:end % self.N] = np.nan
+
+        self.curve.setData(self.x, self._y_plot)
+        self.fault_curve.setData(self.x, self._fault_plot)

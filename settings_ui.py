@@ -1,3 +1,5 @@
+import time
+
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea
 )
@@ -14,13 +16,10 @@ class TopBar(QWidget):
         super().__init__()
         self.config = config
         self.on_config_change = on_config_change
-        # Stream connection state (from worker via signal). Drives DISCONNECTED indicator.
-        self._stream_connected = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
-
 
         # --- Zoom slider ---
         self.zoom_label = QLabel("Zoom:")
@@ -33,12 +32,10 @@ class TopBar(QWidget):
         #self.zoom_slider.setMinimumHeight(50)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
-        # Center the zoom controls vertically within the top bar
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
         layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
 
-        # Sync initial values
-        self.sync_sliders(config)
+        self.sync_slider(config)
 
         # --- Live indicator ---
         self.live_indicator = QLabel("DISCONNECTED")
@@ -77,14 +74,13 @@ class TopBar(QWidget):
             }
         """)
         self.live_btn.setMinimumHeight(50)
-        self.live_btn.setMinimumWidth(80) # Reserve enough space
+        self.live_btn.setMinimumWidth(80)
         
-        # Ensure the button occupies space even when hidden, so the layout doesn't jump
         policy = self.live_btn.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.live_btn.setSizePolicy(policy)
         
-        self.live_btn.hide() # Hidden initially
+        self.live_btn.hide()
         layout.addWidget(self.live_btn)
         layout.setAlignment(self.live_btn, Qt.AlignVCenter)
 
@@ -109,18 +105,9 @@ class TopBar(QWidget):
         layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
 
 
-    def set_stream_connected(self, connected: bool):
-        """Set LSL stream connection state. DISCONNECTED indicator relies only on this."""
-        try:
-            self._stream_connected = bool(connected)
-        except Exception:
-            self._stream_connected = False
-
     def _normalize_toggled(self, checked):
         new_config = self.config.update(normalize_psd=bool(checked))
         self.on_config_change(new_config)
-
-
 
     def _zoom_changed(self, value):
         min_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
@@ -134,12 +121,8 @@ class TopBar(QWidget):
         new_config = self.config.update(display_minutes=new_display_minutes)
         self.on_config_change(new_config)
 
-    def sync_sliders(self, config, is_new_data=False):
+    def sync_slider(self, config):
         """Update sliders based on current config without triggering feedback."""
-        import time
-        if is_new_data:
-            self._last_data_receive_time = time.time()
-
         self.config = config
 
         # Sync Zoom Slider
@@ -154,74 +137,52 @@ class TopBar(QWidget):
         self.zoom_slider.setValue(int(np.round(val_zoom)))
         self.zoom_slider.blockSignals(False)
 
+    def reset_last_data_timer(self):
+        self._last_data_receive_time = time.time()
 
-    def update_indicator(self, dsa_view):
-        """Update live/review/disconnected indicator and Live button visibility.
-        Rule: The 'Jump to Live' button must NOT be shown when there is no DSA data.
-        It should only be visible when there is historical data (review mode) to jump from.
-        """
-        dsa = dsa_view
+    def update_indicator(self):
+        if self._last_data_receive_time + 2.0 < time.time():
+            self.live_indicator.setText("CONNECTED")
+            self.live_indicator.setStyleSheet("""
+                            QLabel {
+                                color: palette(window-text);
+                                background-color: green;
+                                padding: 5px 10px;
+                                border-radius: 5px;
+                                font-weight: bold;
+                                font-size: 11px;
+                            }
+                        """)
+        else:
+            self.live_indicator.setText("DISCONNECTED")
+            self.live_indicator.setStyleSheet("""
+                            QLabel {
+                                color: palette(window-text);
+                                background-color: red;
+                                padding: 5px 10px;
+                                border-radius: 5px;
+                                font-weight: bold;
+                                font-size: 11px;
+                            }
+                        """)
 
-        # Determine if we have any DSA data yet
+    def update_jump_live_btn(self, dsa_view):
         has_data = False
         try:
-            if hasattr(dsa, "_buffer") and getattr(dsa, "_buffer") is not None:
-                last_ts = dsa._buffer.get_last_timestamp()
+            if hasattr(dsa_view, "_buffer") and getattr(dsa_view, "_buffer") is not None:
+                last_ts = dsa_view._buffer.get_last_timestamp()
                 if last_ts is not None and np.isfinite(float(last_ts)):
                     has_data = True
         except Exception:
             has_data = False
 
-        # Determine LIVE vs REVIEW status based on view position (only meaningful if we have data)
         is_live = False
         if has_data:
-            if hasattr(dsa, "is_last_dsa_visible"):
-                is_live = dsa.is_last_dsa_visible()
-            elif hasattr(dsa, "_live_mode"):
-                is_live = bool(dsa._live_mode)
+            if hasattr(dsa_view, "is_last_dsa_visible"):
+                is_live = dsa_view.is_last_dsa_visible()
+            elif hasattr(dsa_view, "_live_mode"):
+                is_live = bool(dsa_view._live_mode)
 
-        # --- Connection status depends ONLY on LSL stream state ---
-        disconnected = not bool(self._stream_connected)
-        if disconnected:
-            self.live_indicator.setText("DISCONNECTED")
-            self.live_indicator.setStyleSheet("""
-                QLabel {
-                    color: palette(window-text);
-                    background-color: red;
-                    padding: 5px 10px;
-                    border-radius: 5px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }
-            """)
-        else:
-            if is_live:
-                self.live_indicator.setText("LIVE")
-                self.live_indicator.setStyleSheet("""
-                    QLabel {
-                        color: palette(window-text);
-                        background-color: green;
-                        padding: 5px 10px;
-                        border-radius: 5px;
-                        font-weight: bold;
-                        font-size: 11px;
-                    }
-                """)
-            else:
-                self.live_indicator.setText("REVIEW")
-                self.live_indicator.setStyleSheet("""
-                    QLabel {
-                        color: palette(window-text);
-                        background-color: gray;
-                        padding: 5px 10px;
-                        border-radius: 5px;
-                        font-weight: bold;
-                        font-size: 11px;
-                    }
-                """)
-
-        # --- Live button visibility rule ---
-        # Show only if: we have data AND we are not at live (i.e., in review)
         if has_data and (not is_live):
             self.live_btn.show()
         else:

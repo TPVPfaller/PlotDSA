@@ -15,7 +15,7 @@ class SystemConfig:
     These should never change during runtime.
     """
     SAMPLE_RATE_HZ: int = 400
-    UPDATE_STEP_SEC: float = 0.25
+    TIME_RESOLUTION: float = 0.25
     INTERVAL: float = 1.1
     NO_DATA_VALUE: float = -10000.0
     LOWEST_FREQ_HZ: float = 0.1
@@ -24,22 +24,22 @@ class SystemConfig:
     EEG_VIEW_WINDOW_SEC: float = 4.0
 
     # Default values
-    window_sec: int = 9
-    segment_sec: float = 2.0
-    segment_overlap: float = 0.5
-    window_overlap: float = 0.85
-    display_minutes: float = 10.0
-    max_freq_hz: int = 30
-    psd_db_min: int = -20
-    psd_db_max: int = 20
-    normalize_psd: bool = False
+    WINDOW_SEC: int = 9
+    SEGMENT_SEC: float = 2.0
+    SEGMENT_OVERLAP: float = 0.5
+    WINDOW_OVERLAP: float = 0.85
+    DISPLAY_MINUTES: float = 10.0
+    MAX_FREQ_HZ: int = 30
+    PSD_DB_MIN: int = -20
+    PSD_DB_MAX: int = 20
+    NORMALIZE_PSD: bool = False
 
     # Bounds (class-level, not instance attributes)
-    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(UPDATE_STEP_SEC)), 60)
+    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 60)
     SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
     WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
     SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
-    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 300.0)
+    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 240.0)
     MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
     PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
     PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
@@ -54,15 +54,15 @@ class UserConfig:
     Immutable at runtime; updates return a new instance.
     """
 
-    window_sec: int = SystemConfig.window_sec
-    segment_sec: float = SystemConfig.segment_sec
-    segment_overlap: float = SystemConfig.segment_overlap
-    window_overlap: float = SystemConfig.window_overlap
-    display_minutes: float = SystemConfig.display_minutes
-    max_freq_hz: int = SystemConfig.max_freq_hz
-    psd_db_min: int = SystemConfig.psd_db_min
-    psd_db_max: int = SystemConfig.psd_db_max
-    normalize_psd: bool = SystemConfig.normalize_psd
+    window_sec: int = SystemConfig.WINDOW_SEC
+    segment_sec: float = SystemConfig.SEGMENT_SEC
+    segment_overlap: float = SystemConfig.SEGMENT_OVERLAP
+    window_overlap: float = SystemConfig.WINDOW_OVERLAP
+    display_minutes: float = SystemConfig.DISPLAY_MINUTES
+    max_freq_hz: int = SystemConfig.MAX_FREQ_HZ
+    psd_db_min: int = SystemConfig.PSD_DB_MIN
+    psd_db_max: int = SystemConfig.PSD_DB_MAX
+    normalize_psd: bool = SystemConfig.NORMALIZE_PSD
 
 
     def __post_init__(self):

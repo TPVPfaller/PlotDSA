@@ -65,16 +65,7 @@ class ProcessingWorker(QObject):
                 time.sleep(0.5)
                 continue
 
-            # Connected: read any available samples
             samples = self.stream.read_samples()
-            # Emit connection change if state flipped unexpectedly
-            if self.stream.receiving != self._last_connection_state:
-                self._last_connection_state = self.stream.receiving
-                try:
-                    self.connection_changed.emit(bool(self.stream.receiving))
-                except Exception:
-                    pass
-
             dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
 
             # Emit each individual sample for the EEG view
@@ -88,14 +79,14 @@ class ProcessingWorker(QObject):
                 # Calculate how many update steps this window covers.
                 # We use ceil to ensure we bridge the gap to the next column's expected timestamp.
                 hop_duration = self.eeg_buffer.hop_len / SystemConfig.SAMPLE_RATE_HZ
-                steps = math.ceil(hop_duration / SystemConfig.UPDATE_STEP_SEC)
+                steps = math.ceil(hop_duration / SystemConfig.TIME_RESOLUTION)
 
                 # Ensure at least one step is filled
                 steps = max(1, steps)
 
                 for i in range(steps):
                     self.dsa_buffer.append(
-                        ts + i * SystemConfig.UPDATE_STEP_SEC,
+                        ts + i * SystemConfig.TIME_RESOLUTION,
                         freqs,
                         psd
                     )
@@ -103,7 +94,7 @@ class ProcessingWorker(QObject):
                 self.new_data.emit(self.dsa_buffer, freqs, psd)
                 self._io_executor.submit(Output.save_psd_to_csv, ts, freqs, psd)
             
-            time.sleep(SystemConfig.UPDATE_STEP_SEC)
+            time.sleep(SystemConfig.TIME_RESOLUTION)
 
     def stop(self):
         self.running = False

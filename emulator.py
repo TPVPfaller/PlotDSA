@@ -69,7 +69,7 @@ def main():
         values = load_csv_first_column(filepath)
         if not values:
             raise RuntimeError("No valid samples loaded")
-        print(f"Streaming {len(values)} samples from {CSV_FILE}")
+        print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv")
 
 
         # Deterministic timestamping

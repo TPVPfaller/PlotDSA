@@ -17,18 +17,19 @@ from calculations import DSACalculator
 class DSABuffer:
     """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
 
-    Stores PSD columns aligned to a fixed time grid defined by `SystemConfig.UPDATE_STEP_SEC`.
+    Stores PSD columns aligned to a fixed time grid defined by `SystemConfig.TIME_RESOLUTION`.
     Read-only methods return windows sized for the current view.
     """
     def __init__(self, SEGMENT_SEC):
         self.SEGMENT_SEC = SEGMENT_SEC
 
-        self.max_frames = int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 60 / SystemConfig.UPDATE_STEP_SEC)
+        self.max_frames = int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 60 / SystemConfig.TIME_RESOLUTION)
         self._reset()
 
     def append(self, ts, f, psd):
         if len(f) != len(self.freq_bins):
             print("Frequency bins do not match. Resetting DSABuffer.")
+            print(f"Expected {len(self.freq_bins)} but got {len(f)}")
             self._reset()
             return
 
@@ -48,7 +49,7 @@ class DSABuffer:
         if self.last_slot is not None and slot > self.last_slot + 1:
             for s in range(self.last_slot + 1, slot):
                 self.data[s % self.max_frames] = np.nan
-                self.timestamps[s % self.max_frames] = self.t0 + s * SystemConfig.UPDATE_STEP_SEC
+                self.timestamps[s % self.max_frames] = self.t0 + s * SystemConfig.TIME_RESOLUTION
 
         # Store data
         self.data[idx] = psd
@@ -63,7 +64,7 @@ class DSABuffer:
         self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
 
     def _timestamp_to_slot(self, ts):
-        return int(np.round((ts - self.t0) / SystemConfig.UPDATE_STEP_SEC))
+        return int(np.round((ts - self.t0) / SystemConfig.TIME_RESOLUTION))
 
     def get_last_timestamp(self):
         if self.last_slot is None:
@@ -104,7 +105,7 @@ class DSABuffer:
         width = min(width, self.max_frames)
 
         # Convert pan offset to slot index
-        pan_slots = int(np.round(pan_offset_sec / SystemConfig.UPDATE_STEP_SEC))
+        pan_slots = int(np.round(pan_offset_sec / SystemConfig.TIME_RESOLUTION))
         slot_start = pan_slots
         slot_end = slot_start + width - 1
 
@@ -129,7 +130,7 @@ class DSABuffer:
         idxs = slots % self.max_frames
 
         frame = self.data[idxs, :height]
-        t_start = self.t0 + slot_start * SystemConfig.UPDATE_STEP_SEC
+        t_start = self.t0 + slot_start * SystemConfig.TIME_RESOLUTION
 
         result = np.full((width, height), np.nan, dtype=np.float32)
         result[:len(frame)] = frame
