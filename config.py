@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Tuple
 import math
 
+
 class SystemConfig:
     """
     Immutable system constants.
@@ -46,7 +47,6 @@ class SystemConfig:
     EEG_BOUNDS: Tuple[int, int] = (-200, 200)
 
 
-
 @dataclass(frozen=True)
 class UserConfig:
     """
@@ -63,7 +63,6 @@ class UserConfig:
     psd_db_min: int = SystemConfig.PSD_DB_MIN
     psd_db_max: int = SystemConfig.PSD_DB_MAX
     normalize_psd: bool = SystemConfig.NORMALIZE_PSD
-
 
     def __post_init__(self):
         """Validate on creation."""

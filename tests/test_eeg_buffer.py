@@ -11,7 +11,7 @@ def make_timestamp_series(start, n, sr):
 
 def generate_samples(n, start_time):
     samples = []
-    delta = datetime.timedelta(milliseconds=1000/SystemConfig.SAMPLE_RATE_HZ)
+    delta = datetime.timedelta(milliseconds=1000 / SystemConfig.SAMPLE_RATE_HZ)
 
     ts = start_time
     for i in range(n):
@@ -53,6 +53,7 @@ def test_timestamp_fault_resets_buffer():
 
     assert len(buffer.eeg_values) == 0
 
+
 def test_eegbuffer_sliding_window_count():
     sr = SystemConfig.SAMPLE_RATE_HZ
     window = 2.0
@@ -80,7 +81,7 @@ def test_eegbuffer_resets_on_gap():
     t0 = datetime.datetime.now()
 
     good = [
-        (t0 + datetime.timedelta(seconds=i/sr), 1.0)
+        (t0 + datetime.timedelta(seconds=i / sr), 1.0)
         for i in range(200)
     ]
 
@@ -92,6 +93,7 @@ def test_eegbuffer_resets_on_gap():
     out2, _ = buf.get_dsa_columns(gap)
 
     assert len(out2) == 0, "Gap must reset EEGBuffer"
+
 
 def test_eegbuffer_resets_on_timestamp_gap():
     window_sec = 1.0
@@ -107,6 +109,7 @@ def test_eegbuffer_resets_on_timestamp_gap():
     # Gap should cause reset → no DSA output
     assert len(out) == 0
 
+
 def test_eegbuffer_produces_dsa_column():
     window_sec = 1.0
     sample_rate = SystemConfig.SAMPLE_RATE_HZ
@@ -116,7 +119,7 @@ def test_eegbuffer_produces_dsa_column():
 
     data = []
     for i in range(int(window_sec * sample_rate)):
-        ts = base + datetime.timedelta(milliseconds=i * (1000/sample_rate))
+        ts = base + datetime.timedelta(milliseconds=i * (1000 / sample_rate))
         data.append((ts, 1.0))
 
     out, samples = buf.get_dsa_columns(data)

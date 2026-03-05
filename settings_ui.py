@@ -3,7 +3,8 @@ import time
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea
 )
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy, \
+    QCheckBox
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import Qt
 from config import SystemConfig
@@ -29,7 +30,7 @@ class TopBar(QWidget):
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
-        self.zoom_slider.setValue(int(config.display_minutes/SystemConfig.DISPLAY_MINUTES_BOUNDS[1])*100)
+        self.zoom_slider.setValue(int(config.display_minutes / SystemConfig.DISPLAY_MINUTES_BOUNDS[1]) * 100)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
@@ -75,11 +76,11 @@ class TopBar(QWidget):
         """)
         self.live_btn.setMinimumHeight(50)
         self.live_btn.setMinimumWidth(80)
-        
+
         policy = self.live_btn.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.live_btn.setSizePolicy(policy)
-        
+
         self.live_btn.hide()
         layout.addWidget(self.live_btn)
         layout.setAlignment(self.live_btn, Qt.AlignVCenter)
@@ -103,7 +104,6 @@ class TopBar(QWidget):
 
         layout.addWidget(self.norm_checkbox)
         layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
-
 
     def _normalize_toggled(self, checked):
         new_config = self.config.update(normalize_psd=bool(checked))
@@ -132,7 +132,7 @@ class TopBar(QWidget):
 
         t = (max_min - curr_min) / (max_min - min_min) if max_min != min_min else 0
         val_zoom = 1 + 99.0 * (1.0 - np.sqrt(max(0, 1.0 - t)))
-        
+
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(np.round(val_zoom)))
         self.zoom_slider.blockSignals(False)
@@ -216,7 +216,8 @@ class SettingsDialog(QDialog):
         self.sliders = {}
         row_idx = 0
 
-        def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0, decimals_override = None):
+        def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0,
+                       decimals_override=None):
             nonlocal row_idx
             row_h = 26
 
@@ -306,8 +307,10 @@ class SettingsDialog(QDialog):
 
         add_slider("Window (s)", SystemConfig.WINDOW_SEC_BOUNDS, config.window_sec, 1, unit=" s")
         add_slider("Segment (s)", SystemConfig.SEGMENT_SEC_BOUNDS, config.segment_sec, 10, unit=" s")
-        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
-        add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
+        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100, unit=" %",
+                   display_factor=100.0, decimals_override=0)
+        add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100, unit=" %",
+                   display_factor=100.0, decimals_override=0)
         add_slider("Max Frequency (Hz)", SystemConfig.MAX_FREQ_HZ_BOUNDS, config.max_freq_hz, 1, unit=" Hz")
 
         # --- Buttons row: Reset on the left, Apply on the right ---
@@ -363,7 +366,6 @@ class SettingsDialog(QDialog):
                 slider.setValue(int(round(val * scale)))
                 slider.blockSignals(False)
                 slider.valueChanged.emit(slider.value())
-
 
     def _apply(self):
         try:

@@ -36,8 +36,8 @@ class DSACalculator:
         # Precompute frequency mask once
         f_dummy = np.fft.rfftfreq(self.nperseg, 1 / SystemConfig.SAMPLE_RATE_HZ)
         self.freq_mask = (
-            (f_dummy >= SystemConfig.LOWEST_FREQ_HZ)
-            & (f_dummy <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
+                (f_dummy >= SystemConfig.LOWEST_FREQ_HZ)
+                & (f_dummy <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
         )
 
     def _bandpass_filter(self, data):
@@ -61,7 +61,7 @@ class DSACalculator:
             nperseg=self.nperseg,
             noverlap=self.noverlap,
             scaling="density",
-            detrend=False,   # faster than "constant"
+            detrend=False,  # faster than "constant"
             average="mean",
             return_onesided=True,
         )

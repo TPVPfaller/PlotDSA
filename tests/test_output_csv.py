@@ -21,6 +21,7 @@ def test_csv_creation(tmp_path, monkeypatch):
     assert "timestamp" in lines[0]
     assert len(lines) == 2
 
+
 def test_output_build_filename(tmp_path):
     freqs = np.array([1.0, 2.0, 3.0])
     base_dir = tmp_path

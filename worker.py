@@ -39,7 +39,7 @@ class ProcessingWorker(QObject):
             self.connection_changed.emit(bool(self.stream.receiving))
         except Exception:
             pass
-        
+
         while self.running:
             # Apply new config if available
             if self._new_config:
@@ -93,7 +93,7 @@ class ProcessingWorker(QObject):
 
                 self.new_data.emit(self.dsa_buffer, freqs, psd)
                 self._io_executor.submit(Output.save_psd_to_csv, ts, freqs, psd)
-            
+
             time.sleep(SystemConfig.TIME_RESOLUTION)
 
     def stop(self):

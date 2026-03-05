@@ -9,6 +9,7 @@ def get_freq_bins(segment_sec=SystemConfig.SEGMENT_SEC):
     mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
     return freq_bins[mask]
 
+
 def test_append_and_retrieve_single_frame():
     buffer = DSABuffer(SEGMENT_SEC=1)
 
@@ -37,6 +38,7 @@ def test_gap_filling_inserts_nan():
 
     # There must be at least one NaN row
     assert np.any(np.isnan(frame))
+
 
 def test_dsabuffer_gap_filling():
     buf = DSABuffer(2.0)
@@ -87,6 +89,7 @@ def test_dsa_timestamp_monotonic():
 
     assert abs(t0 - times[0]) < 1e-6
 
+
 def test_get_view_at_basic_pan():
     buf = DSABuffer(1.0)
     f = get_freq_bins(1.0)
@@ -102,6 +105,7 @@ def test_get_view_at_basic_pan():
 
     assert abs(t_start - (t0 + pan_sec)) < 1e-6
     assert not np.isnan(view[0]).all()
+
 
 def test_get_view_at_clamps_to_last_slot():
     buf = DSABuffer(1.0)
@@ -132,6 +136,7 @@ def test_frequency_mismatch_resets_buffer():
     assert buf.t0 is None
     assert buf.last_slot is None
 
+
 def test_apply_config_resets_when_changed():
     buf = DSABuffer(1.0)
     f = get_freq_bins(1.0)
@@ -144,5 +149,3 @@ def test_apply_config_resets_when_changed():
 
     assert buf.t0 is None
     assert buf.last_slot is None
-
-

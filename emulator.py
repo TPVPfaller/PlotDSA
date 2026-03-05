@@ -44,8 +44,6 @@ def load_csv_first_column(filepath):
 
 
 def main():
-
-
     # Create LSL outlet
     info = StreamInfo(
         name=STREAM_NAME,
@@ -71,7 +69,6 @@ def main():
             raise RuntimeError("No valid samples loaded")
         print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv")
 
-
         # Deterministic timestamping
         start_time = datetime.now()
         interval = 1.0 / SAMPLE_RATE_HZ
@@ -88,8 +85,6 @@ def main():
                 for s in samples:
                     outlet.push_sample([s])
                 samples = []
-
-
 
         print("All samples streamed once. Exiting.")
 

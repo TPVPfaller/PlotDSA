@@ -20,6 +20,7 @@ class DSABuffer:
     Stores PSD columns aligned to a fixed time grid defined by `SystemConfig.TIME_RESOLUTION`.
     Read-only methods return windows sized for the current view.
     """
+
     def __init__(self, SEGMENT_SEC):
         self.SEGMENT_SEC = SEGMENT_SEC
 
@@ -33,7 +34,7 @@ class DSABuffer:
             self._reset()
             return
 
-        if psd is None or len(psd)==0:
+        if psd is None or len(psd) == 0:
             psd = np.full(len(self.freq_bins), np.nan, dtype=np.float32)
 
         # Initialize time grid
@@ -84,7 +85,7 @@ class DSABuffer:
         else:
             slot_start = max(0, slot_now - width + 1)
 
-        slots = np.arange(slot_start, slot_now+1)
+        slots = np.arange(slot_start, slot_now + 1)
         idxs = slots % self.max_frames
 
         return self.timestamps[idxs[0]], self.data[idxs, :height]
@@ -162,6 +163,7 @@ class EEGBuffer:
     - Maintains continuity by resetting on missing/invalid samples or timestamp gaps.
     - Uses DSACalculator to compute a PSD for each full window and advances by `hop_len` samples.
     """
+
     def __init__(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
         self.timestamps = []
@@ -272,7 +274,7 @@ class EEGStream:
 
             except Exception as e:
                 # Invalid sample discarded
-                print("Invalid sample: ",  e)
+                print("Invalid sample: ", e)
                 continue
 
         return samples
@@ -345,4 +347,3 @@ class Output:
 
             row_values = [int(np.round(x, 0)) if np.isfinite(x) else "" for x in psd_db]
             writer.writerow([ts_str] + row_values)
-

@@ -190,7 +190,6 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.plot.setXRange(float(x_start), float(x_start + visible_width_sec), padding=0)
             self.plot.setYRange(0, float(self.MAX_FREQ_HZ), padding=0)
 
-
     def is_last_dsa_visible(self):
         """Check if the timestamp of the last available DSA column is within display bounds."""
         if not hasattr(self, "_buffer") or self._buffer is None:
@@ -212,7 +211,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         is_visible = (self.t0 <= last_ts_val <= self.t0 + visible_width_sec + eps)
 
         return is_visible
-
 
     def jump_to_live(self):
         """Reset view to latest available data."""
@@ -418,7 +416,6 @@ class EEGView(pg.PlotWidget):
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
 
-
     def append_sample(self, ts: float, val):
         if val is None:
             return
@@ -428,7 +425,6 @@ class EEGView(pg.PlotWidget):
         last = self._pending[-1][0] if self._pending else now
         scheduled = max(last + self._sample_period, now)
         self._pending.append((scheduled, val))
-
 
     def _render_frame(self):
         if not self._pending and self.display_head < 0:

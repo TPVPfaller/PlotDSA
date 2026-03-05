@@ -10,3 +10,4 @@ pylsl>=1.16,<2.0
 
 # Test-only dependency (not required at runtime)
 pytest>=7,<9
+pytest-qt

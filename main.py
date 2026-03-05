@@ -18,7 +18,6 @@ from views import DSAView, PSDView, EEGView
 class DSAApplication(QMainWindow):
     """Main application wiring together UI, processing thread and views."""
 
-
     def __init__(self):
         super().__init__()
 
