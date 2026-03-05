@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QScrollArea
 )
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import Qt
 from config import SystemConfig
 import numpy as np
@@ -29,7 +30,6 @@ class TopBar(QWidget):
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
         self.zoom_slider.setValue(int(config.display_minutes/SystemConfig.DISPLAY_MINUTES_BOUNDS[1])*100)
-        #self.zoom_slider.setMinimumHeight(50)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
@@ -50,7 +50,7 @@ class TopBar(QWidget):
                         }
                     """)
         self.connection_indicator.setMinimumHeight(50)
-        self.connection_indicator.setMinimumWidth(110)
+        self.connection_indicator.setMinimumWidth(120)
         self.connection_indicator.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.connection_indicator)
         layout.setAlignment(self.connection_indicator, Qt.AlignVCenter)
@@ -168,13 +168,10 @@ class TopBar(QWidget):
 
     def update_jump_live_btn(self, dsa_view):
         has_data = False
-        try:
-            if hasattr(dsa_view, "_buffer") and getattr(dsa_view, "_buffer") is not None:
-                last_ts = dsa_view._buffer.get_last_timestamp()
-                if last_ts is not None and np.isfinite(float(last_ts)):
-                    has_data = True
-        except Exception:
-            has_data = False
+        if hasattr(dsa_view, "_buffer") and getattr(dsa_view, "_buffer") is not None:
+            last_ts = dsa_view._buffer.get_last_timestamp()
+            if last_ts is not None and np.isfinite(float(last_ts)):
+                has_data = True
 
         is_live = False
         if has_data:
@@ -221,7 +218,7 @@ class SettingsDialog(QDialog):
 
         def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0, decimals_override = None):
             nonlocal row_idx
-            row_h = 26  # uniform row height for visual centering across DPI
+            row_h = 26
 
             name_label = QLabel(name)
             name_label.setStyleSheet("font-size: 16px;")
@@ -271,10 +268,7 @@ class SettingsDialog(QDialog):
             else:
                 decimals = 0
                 if scale and scale > 1:
-                    try:
-                        decimals = max(0, int(round(math.log10(scale))))
-                    except Exception:
-                        decimals = 0
+                    decimals = max(0, int(round(math.log10(scale))))
 
             def fmt_number(x: float) -> str:
                 return f"{x:.{decimals}f}"
@@ -345,55 +339,40 @@ class SettingsDialog(QDialog):
         """Reset sliders to factory defaults displayed in this dialog without applying.
         No persistent change until the user confirms with Apply.
         """
-        try:
-            from PySide6.QtWidgets import QMessageBox
-            resp = QMessageBox.question(
-                self,
-                "Reset Settings",
-                "Reset all settings to default values?\n(Changes are not saved until you click 'Apply and Close'.)",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            if resp != QMessageBox.Yes:
-                return
-        except Exception:
-            # If QMessageBox not available for some reason, continue without confirmation
-            pass
+        resp = QMessageBox.question(
+            self,
+            "Reset Settings",
+            "Reset all settings to default values?\n(Changes are not saved until you click 'Apply and Close'.)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if resp != QMessageBox.Yes:
+            return
 
-        # Build defaults from SystemConfig (single source of truth) and map to sliders using each slider's scale
         mapping = {
-            "Window (s)": SystemConfig.window_sec,
-            "Segment (s)": SystemConfig.segment_sec,
-            "Window Overlap": SystemConfig.window_overlap,
-            "Segment Overlap": SystemConfig.segment_overlap,
-            "Max Frequency (Hz)": SystemConfig.max_freq_hz,
+            "Window (s)": SystemConfig.WINDOW_SEC,
+            "Segment (s)": SystemConfig.SEGMENT_SEC,
+            "Window Overlap": SystemConfig.WINDOW_OVERLAP,
+            "Segment Overlap": SystemConfig.SEGMENT_OVERLAP,
+            "Max Frequency (Hz)": SystemConfig.MAX_FREQ_HZ,
         }
         for name, (slider, scale) in self.sliders.items():
             if name in mapping:
-                try:
-                    val = mapping[name]
-                    slider.blockSignals(True)
-                    slider.setValue(int(round(val * scale)))
-                    slider.blockSignals(False)
-                    # Manually emit to refresh the value label text
-                    slider.valueChanged.emit(slider.value())
-                except Exception:
-                    try:
-                        slider.blockSignals(False)
-                    except Exception:
-                        pass
-                    continue
+                val = mapping[name]
+                slider.blockSignals(True)
+                slider.setValue(int(round(val * scale)))
+                slider.blockSignals(False)
+                slider.valueChanged.emit(slider.value())
+
 
     def _apply(self):
         try:
-            # Read proposed values from sliders (without applying yet)
             proposed_window_sec = self.sliders["Window (s)"][0].value()
             proposed_segment_sec = self.sliders["Segment (s)"][0].value() / 10
             proposed_window_overlap = self.sliders["Window Overlap"][0].value() / 100
             proposed_segment_overlap = self.sliders["Segment Overlap"][0].value() / 100
             proposed_max_freq_hz = self.sliders["Max Frequency (Hz)"][0].value()
 
-            # If segment length changes, warn that DSA history will be cleared
             if abs(proposed_segment_sec - float(self.config.segment_sec)) > 1e-9:
                 from PySide6.QtWidgets import QMessageBox
                 resp = QMessageBox.question(

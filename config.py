@@ -5,7 +5,7 @@ System Configuration Module
 Centralized configuration definition and validation.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Tuple
 import math
 

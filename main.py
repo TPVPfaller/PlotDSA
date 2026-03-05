@@ -44,7 +44,6 @@ class DSAApplication(QMainWindow):
 
         self._create_menu()
 
-        # Layout
         container = QWidget()
         self.layout = QVBoxLayout(container)
 
@@ -60,7 +59,6 @@ class DSAApplication(QMainWindow):
 
         self.setCentralWidget(container)
 
-        # Initial visibility
         self._sync_view_visibility()
 
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
@@ -74,15 +72,9 @@ class DSAApplication(QMainWindow):
 
         view_menu = self.menuBar().addMenu("&View")
 
-        self.action_show_dsa = self._create_toggle_action(
-            view_menu, "Show DSA", True, self.dsa_view
-        )
-        self.action_show_psd = self._create_toggle_action(
-            view_menu, "Show PSD", False, self.psd_view
-        )
-        self.action_show_eeg = self._create_toggle_action(
-            view_menu, "Show EEG", True, self.eeg_view
-        )
+        self.action_show_dsa = self._create_toggle_action(view_menu, "Show DSA", True, self.dsa_view)
+        self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
+        self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
 
     def _create_toggle_action(self, menu, text, default, widget):
         action = QAction(text, self)
@@ -114,11 +106,7 @@ class DSAApplication(QMainWindow):
         self.status_timer.start(500)
 
     def _open_settings(self):
-        dialog = SettingsDialog(
-            self.user_config,
-            self._on_config_change,
-            self,
-        )
+        dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
     def _on_new_dsa(self, dsa_buffer, freqs, psd):

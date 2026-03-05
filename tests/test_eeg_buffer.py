@@ -92,3 +92,33 @@ def test_eegbuffer_resets_on_gap():
     out2, _ = buf.get_dsa_columns(gap)
 
     assert len(out2) == 0, "Gap must reset EEGBuffer"
+
+def test_eegbuffer_resets_on_timestamp_gap():
+    window_sec = 1.0
+    buf = EEGBuffer(window_sec, 1.0, 0.5, 0.5)
+
+    base = datetime.datetime.now()
+
+    good_sample = (base, 10.0)
+    bad_sample = (base + datetime.timedelta(seconds=1), 10.0)  # big gap
+
+    out, samples = buf.get_dsa_columns([good_sample, bad_sample])
+
+    # Gap should cause reset → no DSA output
+    assert len(out) == 0
+
+def test_eegbuffer_produces_dsa_column():
+    window_sec = 1.0
+    sample_rate = SystemConfig.SAMPLE_RATE_HZ
+    buf = EEGBuffer(window_sec, 1.0, 0.5, 0.5)
+
+    base = datetime.datetime.now()
+
+    data = []
+    for i in range(int(window_sec * sample_rate)):
+        ts = base + datetime.timedelta(milliseconds=i * (1000/sample_rate))
+        data.append((ts, 1.0))
+
+    out, samples = buf.get_dsa_columns(data)
+
+    assert len(out) >= 1

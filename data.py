@@ -161,21 +161,16 @@ class EEGBuffer:
 
     - Maintains continuity by resetting on missing/invalid samples or timestamp gaps.
     - Uses DSACalculator to compute a PSD for each full window and advances by `hop_len` samples.
-    - Exposes `last_accepted_samples` so UI (EEGView) can update per-sample with validated data.
     """
     def __init__(self, window_sec, segment_sec, segment_overlap, overlap):
         self.window_sec = window_sec
         self.timestamps = []
         self.eeg_values = []
-        self.time_delta = 1000.0/float(SystemConfig.SAMPLE_RATE_HZ)
+        self.time_delta = 1000.0 / float(SystemConfig.SAMPLE_RATE_HZ)
         self.last_ts = None
         self.processor = DSACalculator(window_sec, segment_sec, segment_overlap)
         self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
-        self.hop_len = int(self.window_len * (1.0 - overlap))
-        if self.hop_len < 1:
-            self.hop_len = 1
-        # Will be filled by `get_dsa_columns` with tuples (epoch_seconds, value)
-        self.last_accepted_samples = []
+        self.hop_len = max(1, int(self.window_len * (1.0 - overlap)))
 
     def _is_valid_sample(self, timestamp, value):
         if self.last_ts is not None:
@@ -290,7 +285,7 @@ class Output:
         if freqs.size < 2:
             raise ValueError("At least 2 frequency bins required")
 
-        df = round(freqs[1] - freqs[0], 6)
+        df = round(freqs[1] - freqs[0], 2)
 
         if start_time is None:
             start_time = dt.now()
@@ -303,32 +298,11 @@ class Output:
 
     @staticmethod
     def save_psd_to_csv(timestamp, freqs, psd_db):
-        """
-        Save a single PSD column to a CSV file.
-
-        File format:
-        - Header written on first creation: 'timestamp' followed by one column per frequency bin labeled
-          like 'f_{freq:.2f}_Hz'.
-        - Each call appends a new row with the provided timestamp and PSD values (dB/Hz).
-
-        Args:
-            timestamp: Optional timestamp for the row. If a datetime is provided, it will be formatted
-                       in ISO 8601 with milliseconds. If None, the current time is used.
-            freqs: 1D array-like of frequency bin centers (Hz), length N.
-            psd_db: 1D array-like of PSD values in dB/Hz, length N.
-
-        Raises:
-            ValueError: If shapes of inputs mismatch or if appending to an existing file with an
-                        incompatible number of columns (i.e., different frequency bins).
-        """
-
-        # Normalize inputs
         freqs = np.asarray(freqs).ravel()
         psd_db = np.asarray(psd_db).ravel()
         if freqs.shape[0] != psd_db.shape[0]:
             raise ValueError("freqs and psd_db must have the same length")
 
-        # Prepare timestamp string
         if timestamp is None:
             ts_str = dt.now().isoformat(timespec="milliseconds")
         else:
@@ -338,7 +312,6 @@ class Output:
                 ts_str = dt.fromtimestamp(timestamp).isoformat(timespec="milliseconds")
             else:
                 ts_str = str(timestamp)
-        # Ensure directory exists
         filepath = Output._build_filename(SystemConfig.BASE_DIR, freqs, timestamp)
         directory = os.path.dirname(filepath)
         if directory and not os.path.exists(directory):
@@ -362,9 +335,8 @@ class Output:
                                 "Frequency bins must remain identical across saves."
                             )
             except FileNotFoundError:
+                print(f"File not found: {filepath} creating new file")
                 write_header = True
-        # Write
-        # TODO: Save in a predefined resolution of 0.5 Hz
         with open(filepath, "a", newline="") as f:
             writer = csv.writer(f)
             if write_header:

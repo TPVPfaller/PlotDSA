@@ -28,7 +28,7 @@ def test_gap_filling_inserts_nan():
     buffer = DSABuffer(4)
 
     f = get_freq_bins(4)
-    psd = np.ones(50)
+    psd = np.ones(len(f))
 
     buffer.append(1000.0, f, psd)
     buffer.append(1002.0, f, psd)  # intentional gap
@@ -42,7 +42,7 @@ def test_dsabuffer_gap_filling():
     buf = DSABuffer(2.0)
 
     f = get_freq_bins(2.0)
-    psd = np.ones(10)
+    psd = np.ones(len(f))
 
     t0 = 1000.0
     buf.append(t0, f, psd)
@@ -57,7 +57,7 @@ def test_dsabuffer_gap_filling():
 def test_dsabuffer_wraparound():
     buf = DSABuffer(1.0)
     f = get_freq_bins(1.0)
-    psd = np.ones(5)
+    psd = np.ones(len(f))
 
     n = buf.max_frames + 10
 
@@ -76,7 +76,7 @@ def test_dsabuffer_wraparound():
 def test_dsa_timestamp_monotonic():
     buf = DSABuffer(2.0)
     f = get_freq_bins(2.0)
-    psd = np.ones(10)
+    psd = np.ones(len(f))
 
     times = [1000.0 + i * SystemConfig.TIME_RESOLUTION for i in range(10)]
 
@@ -86,3 +86,63 @@ def test_dsa_timestamp_monotonic():
     t0, _ = buf.get_view(10, 10)
 
     assert abs(t0 - times[0]) < 1e-6
+
+def test_get_view_at_basic_pan():
+    buf = DSABuffer(1.0)
+    f = get_freq_bins(1.0)
+    psd = np.ones(len(f))
+
+    t0 = 1000.0
+    for i in range(5):
+        buf.append(t0 + i * SystemConfig.TIME_RESOLUTION, f, psd * i)
+
+    # Pan 2 time slots forward
+    pan_sec = 2 * SystemConfig.TIME_RESOLUTION
+    t_start, view = buf.get_view_at(width=3, height=10, pan_offset_sec=pan_sec)
+
+    assert abs(t_start - (t0 + pan_sec)) < 1e-6
+    assert not np.isnan(view[0]).all()
+
+def test_get_view_at_clamps_to_last_slot():
+    buf = DSABuffer(1.0)
+    f = get_freq_bins(1.0)
+    psd = np.ones(len(f))
+
+    t0 = 1000.0
+    buf.append(t0, f, psd)
+
+    # Request far beyond available data
+    t_start, view = buf.get_view_at(width=5, height=10, pan_offset_sec=1000)
+
+    # Should not crash and should contain valid first frame
+    assert not np.isnan(view[0]).all()
+
+
+def test_frequency_mismatch_resets_buffer():
+    buf = DSABuffer(1.0)
+    f = get_freq_bins(1.0)
+    psd = np.ones(len(f))
+
+    buf.append(1000.0, f, psd)
+
+    # Use wrong frequency size
+    wrong_f = np.arange(10)
+    buf.append(1001.0, wrong_f, np.ones(10))
+
+    assert buf.t0 is None
+    assert buf.last_slot is None
+
+def test_apply_config_resets_when_changed():
+    buf = DSABuffer(1.0)
+    f = get_freq_bins(1.0)
+    psd = np.ones(len(f))
+
+    buf.append(1000.0, f, psd)
+    assert buf.t0 is not None
+
+    buf.apply_config(2.0)
+
+    assert buf.t0 is None
+    assert buf.last_slot is None
+
+

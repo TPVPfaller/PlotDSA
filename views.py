@@ -418,7 +418,6 @@ class EEGView(pg.PlotWidget):
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
 
-    # ------------------------------------------------------------------
 
     def append_sample(self, ts: float, val):
         if val is None:
@@ -430,7 +429,6 @@ class EEGView(pg.PlotWidget):
         scheduled = max(last + self._sample_period, now)
         self._pending.append((scheduled, val))
 
-    # ------------------------------------------------------------------
 
     def _render_frame(self):
         if not self._pending and self.display_head < 0:
