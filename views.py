@@ -216,7 +216,6 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def jump_to_live(self):
         """Reset view to latest available data."""
-        print("Jumping to live mode...")
         self._live_mode = True
         # Explicitly set the pan offset to max_offset immediately
         if hasattr(self, "_buffer") and self._buffer is not None:
@@ -262,9 +261,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         if hasattr(self, "_buffer"):
             self.update(self._buffer)
 
-    def set_pan(self, pan: float):
-        pass
-
     def mousePressEvent(self, ev):
         # First let the scene/items (e.g., QGraphicsProxyWidget button) handle the event
         super().mousePressEvent(ev)
@@ -290,11 +286,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             if width_px > 0:
                 dt = (delta.x() / width_px) * x_range
                 # Brushing: dragging left (negative delta.x) moves view forward in time (increases offset)
-                # But we want to pan the data, so dragging left should reveal data to the right.
-                # In many "brush" implementations, you "pull" the data.
-                # If I pull left, the data should move left, meaning I see what's on the right.
-                # So _pan_offset_sec should INCREASE.
-                self._pan_offset_sec -= dt  # subtracting because dragging right (positive delta) should DECREASE offset (move to past)
+                self._pan_offset_sec -= dt
 
                 # Manual pan disables live mode unless we are at the very end (handled in update)
                 self._live_mode = False
@@ -337,19 +329,13 @@ class DSAView(pg.GraphicsLayoutWidget):
                 min_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
                 max_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[1]
 
-                # Zooming in (scale > 1) should decrease DISPLAY_MINUTES
-                # Scale factor > 1 means fingers moving apart (zoom in)
                 new_minutes = self.config.display_minutes / scale_factor
                 new_minutes = max(min_minutes, min(max_minutes, new_minutes))
 
-                # In DSAView, we don't have a callback to on_config_change,
-                # but we can trigger it if we store a reference, OR we can just update local and let sync happen.
-                # Gestures should ideally inform the main app.
                 if hasattr(self, "on_config_change_callback"):
                     new_config = self.config.update(display_minutes=new_minutes)
                     self.on_config_change_callback(new_config)
                 else:
-                    # Fallback if callback not set
                     self.DISPLAY_MINUTES = new_minutes
                     self.n_time_bins = int(self.DISPLAY_MINUTES * 60.0 / SystemConfig.TIME_RESOLUTION)
                     if hasattr(self, "_buffer"):

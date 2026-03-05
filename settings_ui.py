@@ -38,8 +38,8 @@ class TopBar(QWidget):
         self.sync_slider(config)
 
         # --- Live indicator ---
-        self.live_indicator = QLabel("DISCONNECTED")
-        self.live_indicator.setStyleSheet("""
+        self.connection_indicator = QLabel("DISCONNECTED")
+        self.connection_indicator.setStyleSheet("""
                         QLabel {
                             color: palette(window-text);
                             background-color: red;
@@ -49,11 +49,11 @@ class TopBar(QWidget):
                             font-size: 11px;
                         }
                     """)
-        self.live_indicator.setMinimumHeight(50)
-        self.live_indicator.setMinimumWidth(110)
-        self.live_indicator.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.live_indicator)
-        layout.setAlignment(self.live_indicator, Qt.AlignVCenter)
+        self.connection_indicator.setMinimumHeight(50)
+        self.connection_indicator.setMinimumWidth(110)
+        self.connection_indicator.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.connection_indicator)
+        layout.setAlignment(self.connection_indicator, Qt.AlignVCenter)
 
         self.live_btn = QPushButton("▶ Live")
         self.live_btn.setStyleSheet("""
@@ -84,7 +84,7 @@ class TopBar(QWidget):
         layout.addWidget(self.live_btn)
         layout.setAlignment(self.live_btn, Qt.AlignVCenter)
 
-        self._last_data_receive_time = 0
+        self._last_data_receive_time = time.time()
 
         # --- PSD Normalization Checkbox ---
         self.norm_checkbox = QCheckBox("Relative PSD")
@@ -141,9 +141,9 @@ class TopBar(QWidget):
         self._last_data_receive_time = time.time()
 
     def update_indicator(self):
-        if self._last_data_receive_time + 2.0 < time.time():
-            self.live_indicator.setText("CONNECTED")
-            self.live_indicator.setStyleSheet("""
+        if time.time() - self._last_data_receive_time < 2.0:
+            self.connection_indicator.setText("CONNECTED")
+            self.connection_indicator.setStyleSheet("""
                             QLabel {
                                 color: palette(window-text);
                                 background-color: green;
@@ -154,8 +154,8 @@ class TopBar(QWidget):
                             }
                         """)
         else:
-            self.live_indicator.setText("DISCONNECTED")
-            self.live_indicator.setStyleSheet("""
+            self.connection_indicator.setText("DISCONNECTED")
+            self.connection_indicator.setStyleSheet("""
                             QLabel {
                                 color: palette(window-text);
                                 background-color: red;
@@ -219,7 +219,7 @@ class SettingsDialog(QDialog):
         self.sliders = {}
         row_idx = 0
 
-        def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0, decimals_override: int | None = None):
+        def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0, decimals_override = None):
             nonlocal row_idx
             row_h = 26  # uniform row height for visual centering across DPI
 

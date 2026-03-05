@@ -106,11 +106,6 @@ class DSAApplication(QMainWindow):
         self.worker.new_data.connect(self._on_new_dsa)
         self.worker.new_sample.connect(self._on_new_sample)
 
-        if hasattr(self.worker, "connection_changed"):
-            self.worker.connection_changed.connect(
-                self.topbar.set_stream_connected
-            )
-
         self.thread.start()
 
     def _init_timers(self):
@@ -141,6 +136,7 @@ class DSAApplication(QMainWindow):
     def _update_status(self):
         self.topbar.sync_slider(self.user_config)
         self.topbar.update_indicator()
+        self.topbar.update_jump_live_btn(self.dsa_view)
 
     def _on_config_change(self, new_config):
         self.user_config = new_config
