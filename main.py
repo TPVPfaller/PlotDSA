@@ -31,14 +31,8 @@ class DSAApplication(QMainWindow):
     def _init_ui(self):
         self.topbar = TopBar(self.user_config, self._on_config_change)
 
-        self.dsa_view = DSAView(self.user_config)
-        self.dsa_view.on_config_change_callback = self._on_config_change
-
-        self.psd_view = PSDView(
-            self.user_config.psd_db_min,
-            self.user_config.psd_db_max,
-        )
-
+        self.dsa_view = DSAView(self.user_config, self._on_config_change)
+        self.psd_view = PSDView(self.user_config.psd_db_min,self.user_config.psd_db_max,)
         self.eeg_view = EEGView(self.user_config.window_sec)
 
         self._create_menu()
@@ -68,7 +62,7 @@ class DSAApplication(QMainWindow):
         self.worker.moveToThread(self.thread)
 
         self.thread.started.connect(self.worker.run)
-        self.worker.new_data.connect(self._on_new_dsa)
+        self.worker.new_dsa_column.connect(self._on_new_dsa_column)
         self.worker.new_sample.connect(self._on_new_sample)
 
         self.thread.start()
@@ -108,8 +102,8 @@ class DSAApplication(QMainWindow):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
-    def _on_new_dsa(self, dsa_buffer, freqs, psd):
-        self.dsa_view.update(dsa_buffer)
+    def _on_new_dsa_column(self, ts, freqs, psd):
+        self.dsa_view.update((ts, freqs, psd))
 
         if self.psd_view.isVisible():
             self.psd_view.update(freqs, psd)

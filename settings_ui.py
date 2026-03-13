@@ -30,7 +30,7 @@ class TopBar(QWidget):
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
-        self.zoom_slider.setValue(int(config.display_minutes / SystemConfig.DISPLAY_MINUTES_BOUNDS[1]) * 100)
+        self.zoom_slider.setValue(int(SystemConfig.DISPLAY_MINUTES / SystemConfig.DISPLAY_MINUTES_BOUNDS[1]) * 100)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
@@ -167,23 +167,10 @@ class TopBar(QWidget):
                         """)
 
     def update_jump_live_btn(self, dsa_view):
-        has_data = False
-        if hasattr(dsa_view, "_buffer") and getattr(dsa_view, "_buffer") is not None:
-            last_ts = dsa_view._buffer.get_newest_timestamp()
-            if last_ts is not None and np.isfinite(float(last_ts)):
-                has_data = True
-
-        is_live = False
-        if has_data:
-            if hasattr(dsa_view, "is_last_dsa_visible"):
-                is_live = dsa_view.is_last_dsa_visible()
-            elif hasattr(dsa_view, "_live_mode"):
-                is_live = bool(dsa_view._live_mode)
-
-        if has_data and (not is_live):
-            self.live_btn.show()
-        else:
+        if dsa_view.dsa_buffer.t0 is None or dsa_view.live_mode:
             self.live_btn.hide()
+        else:
+            self.live_btn.show()
 
 
 class SettingsDialog(QDialog):

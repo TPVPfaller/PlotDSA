@@ -15,7 +15,7 @@ class SystemConfig:
     Immutable system constants.
     These should never change during runtime.
     """
-    SAMPLE_RATE_HZ: int = 400
+    SAMPLE_RATE_HZ: int = 250
     TIME_RESOLUTION: float = 0.25
     INTERVAL: float = 1.1
     NO_DATA_VALUE: float = -10000.0

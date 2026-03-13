@@ -21,9 +21,8 @@ class DSABuffer:
     Read-only methods return windows sized for the current view.
     """
 
-    def __init__(self, SEGMENT_SEC):
-        self.SEGMENT_SEC = SEGMENT_SEC
-
+    def __init__(self, segment_sec):
+        self.segment_sec = segment_sec
         self.max_frames = int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 60 / SystemConfig.TIME_RESOLUTION)
         self._reset()
 
@@ -36,7 +35,6 @@ class DSABuffer:
 
         if psd is None or len(psd) == 0:
             psd = np.full(len(self.freq_bins), np.nan, dtype=np.float32)
-
 
         # Initialize time grid
         if self.t0 is None:
@@ -123,13 +121,13 @@ class DSABuffer:
 
         return float(t_start), result
 
-    def apply_config(self, SEGMENT_SEC):
-        if self.SEGMENT_SEC != SEGMENT_SEC:
-            self.SEGMENT_SEC = SEGMENT_SEC
+    def apply_config(self, segment_sec):
+        if self.segment_sec != segment_sec:
+            self.segment_sec = segment_sec
             self._reset()
 
     def _reset(self):
-        nperseg = int(self.SEGMENT_SEC * SystemConfig.SAMPLE_RATE_HZ)
+        nperseg = int(self.segment_sec * SystemConfig.SAMPLE_RATE_HZ)
         freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
         self.freq_bins = freq_bins[mask]

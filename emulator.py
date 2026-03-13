@@ -10,7 +10,6 @@ from config import SystemConfig
 # Configuration
 # =========================
 DATA_DIR = "Entropy_Data"
-CSV_FILE = "JSMF_006_filtered_emergence.csv"
 
 STREAM_NAME = "EEG_DATA"
 STREAM_TYPE = "EEG"
@@ -19,7 +18,7 @@ CHANNEL_FORMAT = "string"
 SOURCE_ID = "EEG_DSA_ENTROPY_EMULATOR"
 
 # Set your sample rate here
-SAMPLE_RATE_HZ = SystemConfig.SAMPLE_RATE_HZ  # 256 Hz
+SAMPLE_RATE_HZ = SystemConfig.SAMPLE_RATE_HZ
 
 
 def load_csv_first_column(filepath):
@@ -82,7 +81,7 @@ def main():
 
                 # Push to LSL
                 if idx % SAMPLE_RATE_HZ == 0:
-                    time.sleep(0.05)
+                    time.sleep(1.0)
                     for s in samples:
                         outlet.push_sample([s])
                     samples = []

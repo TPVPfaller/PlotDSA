@@ -8,8 +8,8 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem
 from PySide6.QtCore import Qt, QEvent, QTimer
-from PySide6.QtWidgets import QWidget
 
+from data import DSABuffer
 from config import SystemConfig
 
 
@@ -17,9 +17,11 @@ from config import SystemConfig
 class DSAView(pg.GraphicsLayoutWidget):
     """Dynamic Spectrum Analysis display with live/pan and pinch-zoom support."""
 
-    def __init__(self, config):
+    def __init__(self, config, on_config_change):
         super().__init__()
         self.config = config
+        self.on_config_change = on_config_change
+        self.dsa_buffer = DSABuffer(self.config.segment_sec)
         self._init_parameters()
         self._init_plot()
         self._init_colormap()
@@ -30,8 +32,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         pg.setConfigOptions(antialias=False)
 
     def _init_parameters(self):
-        # State
-        self._live_mode = True
+        self.live_mode = True
+        self._last_render = time.time()
         self._zoom_factor = 1.0
         self.display_minutes = self.config.display_minutes
         self._pan_offset_sec = 0.0
@@ -90,45 +92,48 @@ class DSAView(pg.GraphicsLayoutWidget):
         freq_bins = np.fft.rfftfreq(nperseg, d=1 / SystemConfig.SAMPLE_RATE_HZ)
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= self.config.max_freq_hz)
         self.n_freq_bins = len(freq_bins[mask])
-        self.n_time_bins = int(self.display_minutes * 60 / SystemConfig.TIME_RESOLUTION)
+        self.n_time_bins = int(self.config.display_minutes * 60 / SystemConfig.TIME_RESOLUTION)
 
         self.dsa_rect = np.full((self.n_time_bins, self.n_freq_bins), np.nan, dtype=np.float32)
         self.image.setImage(self.dsa_rect, autoLevels=False)
         self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max))
-        self.image.setRect((self.t0, 0, self.display_minutes * 60, self.config.max_freq_hz))
+        self.image.setRect((self.t0, 0, self.config.display_minutes * 60, self.config.max_freq_hz))
 
     # ------------------ Update & Rendering ------------------ #
-    def update(self, dsa_buffer):
-        self._buffer = dsa_buffer
-        visible_width_sec = self.display_minutes * 60.0
+    def update(self, dsa_column):
+        if time.time() - self._last_render < SystemConfig.TIME_RESOLUTION:
+            return
+        if dsa_column is not None:
+            ts, freqs, psd = dsa_column
+            self.dsa_buffer.append(ts, freqs, psd)
+        visible_width_sec = self.config.display_minutes * 60.0
         n_visible_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
 
-        max_offset = self._buffer.get_newest_timestamp() - visible_width_sec
-        min_offset = self._buffer.get_oldest_timestamp()
+        max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
+        min_offset = self.dsa_buffer.get_oldest_timestamp()
 
-        if self._live_mode:
+        if self.live_mode:
             self._pan_offset_sec = max_offset
         else:
             self._pan_offset_sec = max(min_offset, min(self._pan_offset_sec, max_offset))
             if self._pan_offset_sec >= max_offset - 0.05:
-                self._live_mode = True
+                self.live_mode = True
                 self._pan_offset_sec = max_offset
-                getattr(self, "on_config_change_callback", lambda cfg: None)(self.config)
-            else:
-                self._live_mode = False
-        self.t0, self.dsa_rect = dsa_buffer.get_view_at(
+                self.on_config_change(self.config)
+
+        self.t0, self.dsa_rect = self.dsa_buffer.get_view_at(
             width=n_visible_bins, height=self.n_freq_bins, pan_offset_sec=self._pan_offset_sec
         )
         data = self.dsa_rect
         if self.config.normalize_psd:
             data = self._normalize(data)
             self.colorbar.setLevels((-40, -5))
-            self.image.setLevels((-40, -5))
+            self.image.setLevels((-40, -5), update=False)
         else:
             self.colorbar.setLevels((self.config.psd_db_min, self.config.psd_db_max))
-            self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max))
+            self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max), update=False)
 
-        data_db = 10 * np.log10(np.maximum(data, 1e-12))
+        data_db = 10 * np.log10(np.clip(data, np.finfo(np.float32).eps, None))
         self.image.setImage(data_db, nan_policy="omit", autoLevels=False)
         self.image.setRect((self.t0, SystemConfig.LOWEST_FREQ_HZ, visible_width_sec, self.config.max_freq_hz))
 
@@ -136,23 +141,26 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.setYRange(SystemConfig.LOWEST_FREQ_HZ, float(self.config.max_freq_hz), padding=0)
 
     def _normalize(self, data):
+        data = data.copy()
         col_sums = np.sum(data, axis=1, keepdims=True)
-        return data / np.maximum(col_sums, 1e-12)
+        col_sums = np.maximum(col_sums, np.finfo(data.dtype).eps)
+
+        np.divide(data, col_sums, out=data)
+        return data
 
     # ------------------ Zoom & Pan ------------------ #
     def set_zoom(self, zoom_factor: float):
         print(zoom_factor)
         self._zoom_factor = np.clip(zoom_factor, self._min_zoom, self._max_zoom)
-        if hasattr(self, "_buffer"):
-            self.update(self._buffer)
+        self.update(None)
 
     def jump_to_live(self):
-        self._live_mode = True
-        if hasattr(self, "_buffer") and self._buffer:
-            visible_width_sec = self.display_minutes * 60
-            self._pan_offset_sec = self._buffer.get_newest_timestamp() - visible_width_sec
-            self.update(self._buffer)
-        getattr(self, "on_config_change_callback", lambda cfg: None)(self.config)
+        self.live_mode = True
+        if self.dsa_buffer.t0 is not None:
+            visible_width_sec = self.config.display_minutes * 60
+            self._pan_offset_sec = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
+            self.update(None)
+        self.on_config_change(self.config)
 
     # ------------------ Mouse & Gesture ------------------ #
     def mousePressEvent(self, ev):
@@ -165,17 +173,17 @@ class DSAView(pg.GraphicsLayoutWidget):
             ev.accept()
 
     def mouseMoveEvent(self, ev):
-        if hasattr(self, "_buffer") and self._dragging and self._last_mouse_pos is not None:
+        if self.dsa_buffer.t0 is not None and self._dragging and self._last_mouse_pos is not None:
             delta = ev.pos() - self._last_mouse_pos
             self._last_mouse_pos = ev.pos()
             x_range = self.plot.viewRange()[0][1] - self.plot.viewRange()[0][0]
             width_px = self.plot.width()
             dt = (delta.x() / width_px) * x_range if width_px else 0
             if self._pan_offset_sec == 0.0:
-                self._pan_offset_sec = self._buffer.t0
+                self._pan_offset_sec = self.dsa_buffer.t0
             self._pan_offset_sec -= dt
-            self._live_mode = False
-            self.update(self._buffer)
+            self.live_mode = False
+            self.update(None)
             ev.accept()
         else:
             super().mouseMoveEvent(ev)
@@ -203,34 +211,15 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def handlePinch(self, pinch):
         if pinch.state() == Qt.GestureUpdated:
-            new_minutes = self.display_minutes / pinch.scaleFactor()
+            new_minutes = self.config.display_minutes / pinch.scaleFactor()
             min_m, max_m = SystemConfig.DISPLAY_MINUTES_BOUNDS
             new_minutes = np.clip(new_minutes, min_m, max_m)
-            if hasattr(self, "on_config_change_callback"):
-                self.on_config_change_callback(self.config.update(display_minutes=new_minutes))
-            else:
-                self.display_minutes = new_minutes
-                self.n_time_bins = int(self.display_minutes * 60 / SystemConfig.TIME_RESOLUTION)
-                if hasattr(self, "_buffer"):
-                    self.update(self._buffer)
+            self.on_config_change(self.config.update(display_minutes=new_minutes))
         return True
-
-    # ------------------ Helpers ------------------ #
-    def is_last_dsa_visible(self):
-        if not hasattr(self, "_buffer") or self._buffer is None:
-            return False
-        if self._live_mode:
-            return True
-        last_ts = float(self._buffer.get_newest_timestamp())
-        visible_width_sec = self.display_minutes * 60
-        eps = SystemConfig.TIME_RESOLUTION * 0.5
-        return self.t0 <= last_ts <= self.t0 + visible_width_sec + eps
 
     def apply_config(self, config):
         self.config = config
-        self.display_minutes = config.display_minutes
-        self.update(self._buffer)
-
+        self.update(None)
 
 
 class PSDView(pg.PlotWidget):
@@ -241,6 +230,7 @@ class PSDView(pg.PlotWidget):
         self.setLabel("left", "Power Spectral Density", units="dB/Hz")
         self.setMenuEnabled(False)
         self.showGrid(x=True, y=True)
+        self.setMouseEnabled(x=False, y=False)
 
         self.curve = self.plot(pen=pg.mkPen("y", width=2), title="PSD")
 
@@ -254,7 +244,7 @@ class PSDView(pg.PlotWidget):
     def update(self, freqs, psd):
         if freqs is None or psd is None:
             return
-        psd_db = 10.0 * np.log10(psd)
+        psd_db = 10 * np.log10(np.clip(psd, np.finfo(np.float32).eps, None))
         self.curve.setData(freqs, psd_db)
 
     def apply_config(self, PSD_DB_MIN, PSD_DB_MAX):
@@ -353,8 +343,7 @@ class EEGView(pg.PlotWidget):
         self._last_rendered_head = head_int
 
         np.copyto(self._y_plot, self.display)
-        np.copyto(self._fault_plot,
-                  np.where(np.isnan(self._y_plot), 0.0, np.nan))
+        np.copyto(self._fault_plot, np.where(np.isnan(self._y_plot), 0.0, np.nan))
 
         # --- Blank gap ---
         end = head_int + self.gap_samples + 1
