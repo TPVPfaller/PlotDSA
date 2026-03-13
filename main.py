@@ -62,6 +62,22 @@ class DSAApplication(QMainWindow):
 
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
 
+    def _init_worker(self):
+        self.thread = QThread()
+        self.worker = ProcessingWorker(self.user_config)
+        self.worker.moveToThread(self.thread)
+
+        self.thread.started.connect(self.worker.run)
+        self.worker.new_data.connect(self._on_new_dsa)
+        self.worker.new_sample.connect(self._on_new_sample)
+
+        self.thread.start()
+
+    def _init_timers(self):
+        self.status_timer = QTimer(self)
+        self.status_timer.timeout.connect(self._update_status)
+        self.status_timer.start(500)
+
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
         action_settings = QAction("System Settings...", self)
@@ -87,22 +103,6 @@ class DSAApplication(QMainWindow):
         self.dsa_view.setVisible(self.action_show_dsa.isChecked())
         self.psd_view.setVisible(self.action_show_psd.isChecked())
         self.eeg_view.setVisible(self.action_show_eeg.isChecked())
-
-    def _init_worker(self):
-        self.thread = QThread()
-        self.worker = ProcessingWorker(self.user_config)
-        self.worker.moveToThread(self.thread)
-
-        self.thread.started.connect(self.worker.run)
-        self.worker.new_data.connect(self._on_new_dsa)
-        self.worker.new_sample.connect(self._on_new_sample)
-
-        self.thread.start()
-
-    def _init_timers(self):
-        self.status_timer = QTimer(self)
-        self.status_timer.timeout.connect(self._update_status)
-        self.status_timer.start(500)
 
     def _open_settings(self):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)

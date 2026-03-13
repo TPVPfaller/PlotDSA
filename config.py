@@ -29,14 +29,14 @@ class SystemConfig:
     SEGMENT_SEC: float = 2.0
     SEGMENT_OVERLAP: float = 0.5
     WINDOW_OVERLAP: float = 0.85
-    DISPLAY_MINUTES: float = 10.0
+    DISPLAY_MINUTES: float = 3.0
     MAX_FREQ_HZ: int = 30
     PSD_DB_MIN: int = -20
     PSD_DB_MAX: int = 20
     NORMALIZE_PSD: bool = False
 
     # Bounds (class-level, not instance attributes)
-    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 60)
+    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
     SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
     WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
     SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)

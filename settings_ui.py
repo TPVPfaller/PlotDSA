@@ -169,7 +169,7 @@ class TopBar(QWidget):
     def update_jump_live_btn(self, dsa_view):
         has_data = False
         if hasattr(dsa_view, "_buffer") and getattr(dsa_view, "_buffer") is not None:
-            last_ts = dsa_view._buffer.get_last_timestamp()
+            last_ts = dsa_view._buffer.get_newest_timestamp()
             if last_ts is not None and np.isfinite(float(last_ts)):
                 has_data = True
 

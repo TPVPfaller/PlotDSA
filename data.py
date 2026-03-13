@@ -37,6 +37,7 @@ class DSABuffer:
         if psd is None or len(psd) == 0:
             psd = np.full(len(self.freq_bins), np.nan, dtype=np.float32)
 
+
         # Initialize time grid
         if self.t0 is None:
             self.t0 = ts
@@ -67,35 +68,20 @@ class DSABuffer:
     def _timestamp_to_slot(self, ts):
         return int(np.round((ts - self.t0) / SystemConfig.TIME_RESOLUTION))
 
-    def get_last_timestamp(self):
+    def get_oldest_timestamp(self):
+        if self.last_slot is None:
+            return datetime.datetime.now().timestamp()
+
+        if not self.full:
+            return self.t0
+
+        oldest_slot = self.last_slot - self.max_frames + 1
+        return self.t0 + oldest_slot * SystemConfig.TIME_RESOLUTION
+
+    def get_newest_timestamp(self):
         if self.last_slot is None:
             return datetime.datetime.now().timestamp()
         return self.timestamps[self.last_slot % self.max_frames]
-
-    def get_frame(self, width, height):
-        if self.t0 is None:
-            return datetime.datetime.now().timestamp(), np.empty((1, 0), dtype=np.float32)
-
-        height = min(height, self.data.shape[1])
-        width = min(width, self.max_frames)
-
-        slot_now = self.last_slot
-        if self.full:
-            slot_start = slot_now - width + 1
-        else:
-            slot_start = max(0, slot_now - width + 1)
-
-        slots = np.arange(slot_start, slot_now + 1)
-        idxs = slots % self.max_frames
-
-        return self.timestamps[idxs[0]], self.data[idxs, :height]
-
-    def get_view(self, width, height):
-        dsa_view = np.full((width, height), np.nan, dtype=np.float32)
-        t0, frame = self.get_frame(width, height)
-        dsa_view[0:len(frame), 0:len(frame[0])] = frame
-
-        return t0, dsa_view
 
     def get_view_at(self, width, height, pan_offset_sec):
         """Return a frame starting at t0 + pan_offset_sec."""
@@ -106,8 +92,7 @@ class DSABuffer:
         width = min(width, self.max_frames)
 
         # Convert pan offset to slot index
-        pan_slots = int(np.round(pan_offset_sec / SystemConfig.TIME_RESOLUTION))
-        slot_start = pan_slots
+        slot_start = self._timestamp_to_slot(pan_offset_sec)
         slot_end = slot_start + width - 1
 
         # Clamp to available data

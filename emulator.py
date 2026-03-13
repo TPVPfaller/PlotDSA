@@ -55,38 +55,39 @@ def main():
     )
     outlet = StreamOutlet(info)
     print(f"LSL stream '{STREAM_NAME}' @ {SAMPLE_RATE_HZ} Hz")
+    # Deterministic timestamping
+    ts = datetime.now()
+    while True:
+        for i in range(1, 9):
+            if i == 8:
+                continue
 
-    for i in range(1, 9):
-        if i == 8:
-            continue
+            filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
+            if not os.path.exists(filepath):
+                raise FileNotFoundError(f"CSV file not found: {filepath}")
 
-        filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"CSV file not found: {filepath}")
+            values = load_csv_first_column(filepath)
+            if not values:
+                raise RuntimeError("No valid samples loaded")
+            print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv")
 
-        values = load_csv_first_column(filepath)
-        if not values:
-            raise RuntimeError("No valid samples loaded")
-        print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv")
 
-        # Deterministic timestamping
-        start_time = datetime.now()
-        interval = 1.0 / SAMPLE_RATE_HZ
-        samples = []
+            interval = 1.0 / SAMPLE_RATE_HZ
+            samples = []
 
-        for idx, value in enumerate(values):
-            ts = start_time + timedelta(seconds=idx * interval)
-            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-            samples.append(f"{ts_str},{value}")
+            for idx, value in enumerate(values):
+                ts += timedelta(seconds=interval)
+                ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+                samples.append(f"{ts_str},{value}")
 
-            # Push to LSL
-            if idx % SAMPLE_RATE_HZ == 0:
-                time.sleep(1.0)
-                for s in samples:
-                    outlet.push_sample([s])
-                samples = []
+                # Push to LSL
+                if idx % SAMPLE_RATE_HZ == 0:
+                    time.sleep(0.05)
+                    for s in samples:
+                        outlet.push_sample([s])
+                    samples = []
 
-        print("All samples streamed once. Exiting.")
+            print("All samples streamed once. Exiting.")
 
 
 if __name__ == "__main__":
