@@ -239,8 +239,9 @@ class DSAView(pg.GraphicsLayoutWidget):
 
 
 class PSDView(pg.PlotWidget):
-    def __init__(self, PSD_DB_MIN, PSD_DB_MAX):
+    def __init__(self, config):
         super().__init__()
+        self.config = config
 
         self.setLabel("bottom", "Frequency", units="Hz")
         self.setLabel("left", "Power Spectral Density", units="dB/Hz")
@@ -251,19 +252,29 @@ class PSDView(pg.PlotWidget):
         self.curve = self.plot(pen=pg.mkPen("y", width=2), title="PSD")
 
         self.setInteractive(False)
-        self.setYRange(PSD_DB_MIN - 15,PSD_DB_MAX + 15)
+        self.setYRange(config.psd_db_min - 15, config.psd_db_max + 15)
 
     def update(self, freqs, psd):
         if freqs is None or psd is None:
             return
+        if self.config.normalize_psd:
+            psd = self._normalize(psd)
+            self.setYRange(-55, 10)
+        else:
+            self.setYRange(self.config.psd_db_min - 15, self.config.psd_db_max + 15)
         psd_db = 10 * np.log10(np.clip(psd, np.finfo(np.float32).eps, None))
         self.curve.setData(freqs, psd_db)
 
-    def apply_config(self, PSD_DB_MIN, PSD_DB_MAX):
-        self.setYRange(
-            PSD_DB_MIN - 15,
-            PSD_DB_MAX + 15
-        )
+    def apply_config(self, config):
+        self.config = config
+
+    def _normalize(self, psd):
+        psd = psd.copy()
+        col_sums = np.sum(psd)
+        col_sums = np.maximum(col_sums, np.finfo(psd.dtype).eps)
+
+        np.divide(psd, col_sums, out=psd)
+        return psd
 
 
 class EEGView(pg.PlotWidget):
@@ -271,7 +282,7 @@ class EEGView(pg.PlotWidget):
 
     RENDER_HZ = 20
 
-    def __init__(self, window_sec: float):
+    def __init__(self):
         super().__init__()
 
         # --- Plot setup ---

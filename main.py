@@ -33,8 +33,8 @@ class DSAApplication(QMainWindow):
         self.topbar = TopBar(self.user_config, self._on_config_change)
 
         self.dsa_view = DSAView(self.user_config, self._on_config_change)
-        self.psd_view = PSDView(self.user_config.psd_db_min,self.user_config.psd_db_max,)
-        self.eeg_view = EEGView(self.user_config.window_sec)
+        self.psd_view = PSDView(self.user_config)
+        self.eeg_view = EEGView()
 
         self._create_menu()
 
@@ -127,6 +127,7 @@ class DSAApplication(QMainWindow):
 
         self.worker.apply_config(new_config)
         self.dsa_view.apply_config(new_config)
+        self.psd_view.apply_config(new_config)
 
         self._update_status()
 
