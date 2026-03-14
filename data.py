@@ -7,12 +7,12 @@ if getattr(sys, "frozen", False):
 
 from pylsl import StreamInlet, resolve_byprop
 import csv
-from datetime import datetime as dt
 from config import SystemConfig
 import numpy as np
-import datetime
 from calculations import DSACalculator
-
+import time
+from datetime import datetime as dt
+import datetime
 
 class DSABuffer:
     """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
@@ -56,10 +56,9 @@ class DSABuffer:
         self.timestamps[idx] = ts
 
         # Mark buffer full if we wrapped
-        if self.last_slot is not None and slot - self.last_slot >= self.max_frames:
-            self.full = True
-        elif slot >= self.max_frames:
-            self.full = True
+        if self.last_slot is not None:
+            if slot - self.last_slot >= self.max_frames:
+                self.full = True
 
         self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
 
@@ -68,7 +67,7 @@ class DSABuffer:
 
     def get_oldest_timestamp(self):
         if self.last_slot is None:
-            return datetime.datetime.now().timestamp()
+            return time.time()
 
         if not self.full:
             return self.t0
@@ -78,13 +77,13 @@ class DSABuffer:
 
     def get_newest_timestamp(self):
         if self.last_slot is None:
-            return datetime.datetime.now().timestamp()
+            return time.time()
         return self.timestamps[self.last_slot % self.max_frames]
 
     def get_view_at(self, width, height, pan_offset_sec):
         """Return a frame starting at t0 + pan_offset_sec."""
         if self.t0 is None:
-            return datetime.datetime.now().timestamp(), np.full((width, height), np.nan, dtype=np.float32)
+            return time.time(), np.full((width, height), np.nan, dtype=np.float32)
 
         height = min(height, self.data.shape[1])
         width = min(width, self.max_frames)
@@ -160,8 +159,7 @@ class EEGBuffer:
     def _is_valid_sample(self, timestamp, value):
         if self.last_ts is not None:
             expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
-            dt = abs((timestamp - expected).total_seconds())
-            if dt > SystemConfig.TIME_DIFF_TOLERANCE:
+            if abs((timestamp - expected).total_seconds()) > SystemConfig.TIME_DIFF_TOLERANCE:
                 print(f"Timestamp fault:{timestamp}, expected {expected}")
                 return False
             if value is None or np.isnan(value):

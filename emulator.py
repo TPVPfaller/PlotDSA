@@ -21,7 +21,7 @@ SOURCE_ID = "EEG_DSA_ENTROPY_EMULATOR"
 SAMPLE_RATE_HZ = SystemConfig.SAMPLE_RATE_HZ
 
 
-def load_csv_first_column(filepath):
+def load_csv_column(filepath, i):
     """Load only the first column of CSV, skipping NaNs at the start"""
     values = []
     started = False
@@ -31,7 +31,7 @@ def load_csv_first_column(filepath):
             if not row:
                 continue
             try:
-                value = float(row[1])  # Second column contains your data
+                value = float(row[i])
                 if not math.isfinite(value) and not started:
                     continue  # Skip initial NaNs
                 else:
@@ -60,33 +60,32 @@ def main():
         for i in range(1, 9):
             if i == 8:
                 continue
+            for j in range(1, 11):
+                filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
+                if not os.path.exists(filepath):
+                    raise FileNotFoundError(f"CSV file not found: {filepath}")
 
-            filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
-            if not os.path.exists(filepath):
-                raise FileNotFoundError(f"CSV file not found: {filepath}")
+                values = load_csv_column(filepath, j)
+                if not values:
+                    raise RuntimeError("No valid samples loaded")
+                print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv column {j}...")
 
-            values = load_csv_first_column(filepath)
-            if not values:
-                raise RuntimeError("No valid samples loaded")
-            print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv")
+                interval = 1.0 / SAMPLE_RATE_HZ
+                samples = []
 
+                for idx, value in enumerate(values):
+                    ts += timedelta(seconds=interval)
+                    ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
+                    samples.append(f"{ts_str},{value}")
 
-            interval = 1.0 / SAMPLE_RATE_HZ
-            samples = []
+                    # Push to LSL
+                    if idx % SAMPLE_RATE_HZ == 0:
+                        time.sleep(1.0)
+                        for s in samples:
+                            outlet.push_sample([s])
+                        samples = []
 
-            for idx, value in enumerate(values):
-                ts += timedelta(seconds=interval)
-                ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
-                samples.append(f"{ts_str},{value}")
-
-                # Push to LSL
-                if idx % SAMPLE_RATE_HZ == 0:
-                    time.sleep(1.0)
-                    for s in samples:
-                        outlet.push_sample([s])
-                    samples = []
-
-            print("All samples streamed once. Exiting.")
+                print("All samples streamed once. Exiting.")
 
 
 if __name__ == "__main__":

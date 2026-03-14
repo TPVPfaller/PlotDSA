@@ -8,6 +8,7 @@ import sys
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QAction
+import pyqtgraph as pg
 
 from config import UserConfig
 from settings_ui import TopBar, SettingsDialog
@@ -55,6 +56,8 @@ class DSAApplication(QMainWindow):
         self._sync_view_visibility()
 
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
+        pg.setConfigOptions(antialias=False)
+        pg.setConfigOption('useNumba', True)
 
     def _init_worker(self):
         self.thread = QThread()

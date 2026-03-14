@@ -8,7 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem
 from PySide6.QtCore import Qt, QEvent, QTimer
-
+import time
 from data import DSABuffer
 from config import SystemConfig
 
@@ -29,11 +29,10 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._init_gestures()
         self._init_image_buffer()
 
-        pg.setConfigOptions(antialias=False)
-
     def _init_parameters(self):
         self.live_mode = True
         self._last_render = time.time()
+        self._last_levels = (self.config.psd_db_min, self.config.psd_db_max)
         self._zoom_factor = 1.0
         self.display_minutes = self.config.display_minutes
         self._pan_offset_sec = 0.0
@@ -53,7 +52,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.invertY(False)
         self.plot.setMouseEnabled(x=False, y=False)
 
-        self.image = pg.ImageItem(interpolation="linear")
+        self.image = pg.ImageItem(axisOrder='col-major', interpolation="linear")
         self.plot.addItem(self.image)
 
     def _init_colormap(self):
@@ -125,13 +124,15 @@ class DSAView(pg.GraphicsLayoutWidget):
             width=n_visible_bins, height=self.n_freq_bins, pan_offset_sec=self._pan_offset_sec
         )
         data = self.dsa_rect
+        np.ascontiguousarray(data)
+        levels = (self.config.psd_db_min, self.config.psd_db_max)
         if self.config.normalize_psd:
             data = self._normalize(data)
-            self.colorbar.setLevels((-40, -5))
-            self.image.setLevels((-40, -5), update=False)
-        else:
-            self.colorbar.setLevels((self.config.psd_db_min, self.config.psd_db_max))
-            self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max), update=False)
+            levels = (-40, -5)
+        if levels != self._last_levels:
+            self.image.setLevels(levels, update=False)
+            self.colorbar.setLevels(levels)
+            self._last_levels = levels
 
         data_db = 10 * np.log10(np.clip(data, np.finfo(np.float32).eps, None))
         self.image.setImage(data_db, nan_policy="omit", autoLevels=False)
@@ -176,9 +177,9 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self.dsa_buffer.t0 is not None and self._dragging and self._last_mouse_pos is not None:
             delta = ev.pos() - self._last_mouse_pos
             self._last_mouse_pos = ev.pos()
-            x_range = self.plot.viewRange()[0][1] - self.plot.viewRange()[0][0]
+            visible_width_sec = self.config.display_minutes * 60
             width_px = self.plot.width()
-            dt = (delta.x() / width_px) * x_range if width_px else 0
+            dt = (delta.x() / width_px) * visible_width_sec if width_px else 0
             if self._pan_offset_sec == 0.0:
                 self._pan_offset_sec = self.dsa_buffer.t0
             self._pan_offset_sec -= dt
@@ -218,7 +219,22 @@ class DSAView(pg.GraphicsLayoutWidget):
         return True
 
     def apply_config(self, config):
+        old_width = self.config.display_minutes * 60.0
+        new_width = config.display_minutes * 60.0
+
+        # keep current center
+        center = self._pan_offset_sec + old_width / 2.0
+
         self.config = config
+
+        # recompute pan so center stays fixed
+        self._pan_offset_sec = center - new_width / 2.0
+
+        if self.dsa_buffer.t0 is not None:
+            max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
+            min_offset = self.dsa_buffer.get_oldest_timestamp()
+            self._pan_offset_sec = max(min_offset, min(self._pan_offset_sec, max_offset))
+
         self.update(None)
 
 
@@ -235,11 +251,7 @@ class PSDView(pg.PlotWidget):
         self.curve = self.plot(pen=pg.mkPen("y", width=2), title="PSD")
 
         self.setInteractive(False)
-
-        self.setYRange(
-            PSD_DB_MIN - 15,
-            PSD_DB_MAX + 15
-        )
+        self.setYRange(PSD_DB_MIN - 15,PSD_DB_MAX + 15)
 
     def update(self, freqs, psd):
         if freqs is None or psd is None:
@@ -302,7 +314,6 @@ class EEGView(pg.PlotWidget):
         if val is None:
             return
 
-        import time
         now = time.perf_counter()
         last = self._pending[-1][0] if self._pending else now
         scheduled = max(last + self._sample_period, now)
@@ -332,9 +343,7 @@ class EEGView(pg.PlotWidget):
                 return
             interp_head = float(self.display_head)
 
-        self.update_line.setPos(
-            (interp_head / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC
-        )
+        self.update_line.setPos((interp_head / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC)
 
         head_int = int(interp_head) % self.N
         if not changed and head_int == self._last_rendered_head:
