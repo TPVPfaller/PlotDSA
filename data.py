@@ -107,18 +107,15 @@ class DSABuffer:
                 min_available_slot = self.last_slot - self.max_frames + 1
                 slot_start = max(min_available_slot, slot_start)
 
-            slot_end = slot_start + width - 1
+        idxs = (np.arange(width) + slot_start) % self.max_frames
 
-        slots = np.arange(slot_start, slot_end + 1)
-        idxs = slots % self.max_frames
-
-        frame = self.data[idxs, :height]
         t_start = self.t0 + slot_start * SystemConfig.TIME_RESOLUTION
+        frame = self.data[idxs, :height]
 
-        result = np.full((width, height), np.nan, dtype=np.float32)
-        result[:len(frame)] = frame
+        view = self.empty_buffer[:width, :height]
+        view[:len(frame)] = frame
 
-        return float(t_start), result
+        return float(t_start), view
 
     def apply_config(self, segment_sec):
         if self.segment_sec != segment_sec:
@@ -132,6 +129,9 @@ class DSABuffer:
         self.freq_bins = freq_bins[mask]
 
         self.data = np.full((self.max_frames, len(self.freq_bins)), np.nan, dtype=np.float32)
+        self.empty_buffer = np.empty_like(self.data)
+        self.empty_buffer[:] = np.nan
+
         self.timestamps = np.full(self.max_frames, np.nan)
 
         self.t0 = None
@@ -180,13 +180,13 @@ class EEGBuffer:
                 self.eeg_values.clear()
                 self.timestamps.clear()
                 self.last_ts = None
-                samples.append((ts.timestamp(), np.nan))
+                samples.append(np.nan)
                 continue
 
             self.eeg_values.append(eeg)
             self.timestamps.append(ts)
             self.last_ts = ts
-            samples.append((ts.timestamp(), float(eeg)))
+            samples.append(float(eeg))
 
             # while enough data exists for a window
             while len(self.eeg_values) >= self.window_len:

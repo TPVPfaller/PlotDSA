@@ -87,16 +87,19 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.grabGesture(Qt.PinchGesture)
 
     def _init_image_buffer(self):
+        self.n_freq_bins = self._calc_n_freq_bins()
+        visible_width_sec = self.display_minutes * 60.0
+        n_time_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
+        self.dsa_rect = np.full((n_time_bins, self.n_freq_bins), np.nan, dtype=np.float32)
+        self.image.setImage(self.dsa_rect, autoLevels=False)
+        self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max))
+        self.image.setRect((self.t0, 0, self.display_minutes * 60, self.config.max_freq_hz))
+
+    def _calc_n_freq_bins(self):
         nperseg = int(self.config.segment_sec * SystemConfig.SAMPLE_RATE_HZ)
         freq_bins = np.fft.rfftfreq(nperseg, d=1 / SystemConfig.SAMPLE_RATE_HZ)
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= self.config.max_freq_hz)
-        self.n_freq_bins = len(freq_bins[mask])
-        self.n_time_bins = int(self.config.display_minutes * 60 / SystemConfig.TIME_RESOLUTION)
-
-        self.dsa_rect = np.full((self.n_time_bins, self.n_freq_bins), np.nan, dtype=np.float32)
-        self.image.setImage(self.dsa_rect, autoLevels=False)
-        self.image.setLevels((self.config.psd_db_min, self.config.psd_db_max))
-        self.image.setRect((self.t0, 0, self.config.display_minutes * 60, self.config.max_freq_hz))
+        return len(freq_bins[mask])
 
     # ------------------ Update & Rendering ------------------ #
     def update(self, dsa_column):
@@ -105,8 +108,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         if dsa_column is not None:
             ts, freqs, psd = dsa_column
             self.dsa_buffer.append(ts, freqs, psd)
-        visible_width_sec = self.config.display_minutes * 60.0
-        n_visible_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
+        visible_width_sec = self.display_minutes * 60.0
+        n_time_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
 
         max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
         min_offset = self.dsa_buffer.get_oldest_timestamp()
@@ -118,10 +121,10 @@ class DSAView(pg.GraphicsLayoutWidget):
             if self._pan_offset_sec >= max_offset - 0.05:
                 self.live_mode = True
                 self._pan_offset_sec = max_offset
-                self.on_config_change(self.config)
+                #self.on_config_change(self.config)
 
         self.t0, self.dsa_rect = self.dsa_buffer.get_view_at(
-            width=n_visible_bins, height=self.n_freq_bins, pan_offset_sec=self._pan_offset_sec
+            width=n_time_bins, height=self.n_freq_bins, pan_offset_sec=self._pan_offset_sec
         )
         data = self.dsa_rect
         np.ascontiguousarray(data)
@@ -158,10 +161,10 @@ class DSAView(pg.GraphicsLayoutWidget):
     def jump_to_live(self):
         self.live_mode = True
         if self.dsa_buffer.t0 is not None:
-            visible_width_sec = self.config.display_minutes * 60
+            visible_width_sec = self.display_minutes * 60
             self._pan_offset_sec = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
             self.update(None)
-        self.on_config_change(self.config)
+        #self.on_config_change(self.config)
 
     # ------------------ Mouse & Gesture ------------------ #
     def mousePressEvent(self, ev):
@@ -177,7 +180,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self.dsa_buffer.t0 is not None and self._dragging and self._last_mouse_pos is not None:
             delta = ev.pos() - self._last_mouse_pos
             self._last_mouse_pos = ev.pos()
-            visible_width_sec = self.config.display_minutes * 60
+            visible_width_sec = self.display_minutes * 60
             width_px = self.plot.width()
             dt = (delta.x() / width_px) * visible_width_sec if width_px else 0
             if self._pan_offset_sec == 0.0:
@@ -212,28 +215,34 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def handlePinch(self, pinch):
         if pinch.state() == Qt.GestureUpdated:
-            new_minutes = self.config.display_minutes / pinch.scaleFactor()
+            new_minutes = self.display_minutes / pinch.scaleFactor()
             min_m, max_m = SystemConfig.DISPLAY_MINUTES_BOUNDS
             new_minutes = np.clip(new_minutes, min_m, max_m)
             self.on_config_change(self.config.update(display_minutes=new_minutes))
         return True
 
-    def apply_config(self, config):
-        old_width = self.config.display_minutes * 60.0
-        new_width = config.display_minutes * 60.0
-
-        # keep current center
-        center = self._pan_offset_sec + old_width / 2.0
-
+    def apply_config(self, config, display_minutes=None):
+        if config.segment_sec != self.config.segment_sec:
+            self._init_image_buffer()
+            self.dsa_buffer.apply_config(config.segment_sec)
+        elif config.max_freq_hz != self.config.max_freq_hz:
+            self.n_freq_bins = self._calc_n_freq_bins()
         self.config = config
+        if display_minutes is not None:
+            old_width = display_minutes * 60.0
+            new_width = self.display_minutes * 60.0
+            self.display_minutes = display_minutes
 
-        # recompute pan so center stays fixed
-        self._pan_offset_sec = center - new_width / 2.0
+            # keep current center
+            center = self._pan_offset_sec + old_width / 2.0
 
-        if self.dsa_buffer.t0 is not None:
-            max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
-            min_offset = self.dsa_buffer.get_oldest_timestamp()
-            self._pan_offset_sec = max(min_offset, min(self._pan_offset_sec, max_offset))
+            # recompute pan so center stays fixed
+            self._pan_offset_sec = center - new_width / 2.0
+
+            if self.dsa_buffer.t0 is not None:
+                max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
+                min_offset = self.dsa_buffer.get_oldest_timestamp()
+                self._pan_offset_sec = max(min_offset, min(self._pan_offset_sec, max_offset))
 
         self.update(None)
 
@@ -321,7 +330,7 @@ class EEGView(pg.PlotWidget):
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
 
-    def append_sample(self, ts: float, val):
+    def append_sample(self, val):
         if val is None:
             return
 

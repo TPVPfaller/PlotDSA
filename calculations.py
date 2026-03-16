@@ -1,4 +1,4 @@
-from scipy.signal import welch, butter, filtfilt, iirnotch
+from scipy.signal import sosfiltfilt, welch, butter, filtfilt, iirnotch, tf2sos
 import numpy as np
 from config import SystemConfig
 
@@ -20,14 +20,17 @@ class DSACalculator:
         self._update_welch_params()
 
     def _precompute_filters(self):
-        # Bandpass
         low = SystemConfig.LOWEST_FREQ_HZ / (0.5 * SystemConfig.SAMPLE_RATE_HZ)
         high = SystemConfig.MAX_FREQ_HZ_BOUNDS[1] / (0.5 * SystemConfig.SAMPLE_RATE_HZ)
-        self.bp_b, self.bp_a = butter(4, [low, high], btype="band")
 
-        # Notch
-        freq = self.notch_freq / (0.5 * SystemConfig.SAMPLE_RATE_HZ)
-        self.notch_b, self.notch_a = iirnotch(freq, self.notch_quality)
+        bp_b, bp_a = butter(4, [low, high], btype="band")
+        notch_b, notch_a = iirnotch(self.notch_freq / (0.5 * SystemConfig.SAMPLE_RATE_HZ), self.notch_quality)
+
+        # convert to SOS and stack
+        sos_bp = tf2sos(bp_b, bp_a)
+        sos_notch = tf2sos(notch_b, notch_a)
+
+        self.sos = np.vstack([sos_bp, sos_notch])
 
     def _update_welch_params(self):
         self.nperseg = int(SystemConfig.SAMPLE_RATE_HZ * self.segment_sec)
@@ -48,8 +51,7 @@ class DSACalculator:
         if len(eeg_values) < min_samples:
             return None, None
 
-        filtered = filtfilt(self.bp_b, self.bp_a, eeg_values)
-        filtered = filtfilt(self.notch_b, self.notch_a, filtered)
+        filtered = sosfiltfilt(self.sos, eeg_values)
 
         f, psd = welch(
             filtered,
@@ -66,6 +68,7 @@ class DSACalculator:
         f = f[self.freq_mask]
         psd = psd[self.freq_mask]
 
+        np.any(psd)
         if not np.all(psd):
             return f, np.full(len(psd), np.nan, np.float32)
 

@@ -14,10 +14,11 @@ import math
 
 
 class TopBar(QWidget):
-    def __init__(self, config, on_config_change):
+    def __init__(self, config, on_config_change, on_zoom_change,):
         super().__init__()
         self.config = config
         self.on_config_change = on_config_change
+        self.on_zoom_change = on_zoom_change
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -35,8 +36,6 @@ class TopBar(QWidget):
         layout.addWidget(self.zoom_slider)
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
         layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
-
-        self.sync_slider(config)
 
         # --- Live indicator ---
         self.connection_indicator = QLabel("DISCONNECTED")
@@ -118,17 +117,14 @@ class TopBar(QWidget):
         t = 1.0 - ((1.0 - (value - 1) / 99.0) ** 2)
         new_display_minutes = max_minutes - t * (max_minutes - min_minutes)
 
-        new_config = self.config.update(display_minutes=new_display_minutes)
-        self.on_config_change(new_config)
+        self.on_zoom_change(new_display_minutes)
 
-    def sync_slider(self, config):
+    def sync_slider(self, display_minutes):
         """Update sliders based on current config without triggering feedback."""
-        self.config = config
-
         # Sync Zoom Slider
         min_min = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
         max_min = SystemConfig.DISPLAY_MINUTES_BOUNDS[1]
-        curr_min = self.config.display_minutes
+        curr_min = display_minutes
 
         t = (max_min - curr_min) / (max_min - min_min) if max_min != min_min else 0
         val_zoom = 1 + 99.0 * (1.0 - np.sqrt(max(0, 1.0 - t)))

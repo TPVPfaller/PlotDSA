@@ -8,7 +8,7 @@ from config import SystemConfig
 
 class ProcessingWorker(QObject):
     new_dsa_column = Signal(float, object, object)  # ts, freqs, psd
-    new_sample = Signal(float, float)  # epoch_seconds, eeg_value
+    new_samples = Signal(object)  # list of eeg values
 
     def __init__(self, config):
         super().__init__()
@@ -32,6 +32,7 @@ class ProcessingWorker(QObject):
 
     @Slot()
     def run(self):
+        next_time = time.time()
         while self.running:
             try:
                 if self._new_config:
@@ -55,8 +56,8 @@ class ProcessingWorker(QObject):
                 dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
 
                 # Emit each individual sample for the EEG view
-                for ts_val, eeg_val in checked_samples:
-                    self.new_sample.emit(ts_val, eeg_val)
+                if checked_samples:
+                    self.new_samples.emit(checked_samples)
 
                 for ts, freqs, psd in dsa_columns:
                     if psd is None:
@@ -75,7 +76,9 @@ class ProcessingWorker(QObject):
 
                     self._io_executor.submit(Output.save_psd_to_csv, ts, freqs, psd)
 
-                time.sleep(SystemConfig.TIME_RESOLUTION)
+                next_time += SystemConfig.TIME_RESOLUTION
+                sleep = max(0.0, next_time - time.time())
+                time.sleep(sleep)
             except Exception as e:
                 print("Worker error:", e)
 

@@ -5,7 +5,7 @@ EEG Density Spectral Array Viewer
 """
 
 import sys
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QAction
 import pyqtgraph as pg
@@ -30,7 +30,7 @@ class DSAApplication(QMainWindow):
         self._init_timers()
 
     def _init_ui(self):
-        self.topbar = TopBar(self.user_config, self._on_config_change)
+        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change)
 
         self.dsa_view = DSAView(self.user_config, self._on_config_change)
         self.psd_view = PSDView(self.user_config)
@@ -66,7 +66,7 @@ class DSAApplication(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.worker.new_dsa_column.connect(self._on_new_dsa_column)
-        self.worker.new_sample.connect(self._on_new_sample)
+        self.worker.new_samples.connect(self._on_new_samples)
 
         self.thread.start()
 
@@ -77,16 +77,56 @@ class DSAApplication(QMainWindow):
 
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
+
         action_settings = QAction("System Settings...", self)
         action_settings.setShortcut("Ctrl+,")
         action_settings.triggered.connect(self._open_settings)
         menu.addAction(action_settings)
+
+        # NEW: information
+        action_info = QAction("Information", self)
+        action_info.triggered.connect(self._show_information)
+        menu.addAction(action_info)
 
         view_menu = self.menuBar().addMenu("&View")
 
         self.action_show_dsa = self._create_toggle_action(view_menu, "Show DSA", True, self.dsa_view)
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
+
+    def _show_information(self):
+        from config import SystemConfig
+        from PySide6.QtWidgets import QMessageBox
+        from PySide6.QtCore import Qt
+
+        text = f"""
+        <p>
+            - PSD data is written to: <code>{SystemConfig.BASE_DIR}</code>
+        </p>
+        <p>
+            - The viewer can display a maximum of <b>4 hours</b> of EEG data.
+        </p>
+        <p>
+            - Incoming EEG samples are expected at <b>{SystemConfig.SAMPLE_RATE_HZ} Hz</b>.
+        </p>
+        <p>
+            - Changing the segment window changes the <b>frequency resolution</b> of the PSD.
+        </p>
+        <ul>
+            <li>The current DSA history is deleted</li>
+            <li>New PSD data is written to a different CSV file</li>
+        </ul>
+        <p>
+            - For more information see https://github.com/TPVPfaller/PlotDSA.
+        </p>
+        """
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Information")
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(text)
+        msg.setIcon(QMessageBox.NoIcon)
+        msg.exec()
 
     def _create_toggle_action(self, menu, text, default, widget):
         action = QAction(text, self)
@@ -113,14 +153,20 @@ class DSAApplication(QMainWindow):
 
         self._update_status()
 
-    def _on_new_sample(self, t_epoch, value):
-        self.eeg_view.append_sample(t_epoch, value)
-        self.topbar.reset_last_data_timer()
+    def _on_new_samples(self, samples):
+        for value in samples:
+            self.eeg_view.append_sample(value)
+        if samples:
+            self.topbar.reset_last_data_timer()
 
     def _update_status(self):
-        self.topbar.sync_slider(self.user_config)
         self.topbar.update_indicator()
         self.topbar.update_jump_live_btn(self.dsa_view)
+
+    def _on_zoom_change(self, display_minutes):
+        self.topbar.sync_slider(display_minutes)
+        self.topbar.update_jump_live_btn(self.dsa_view)
+        self.dsa_view.apply_config(self.user_config, display_minutes)
 
     def _on_config_change(self, new_config):
         self.user_config = new_config
