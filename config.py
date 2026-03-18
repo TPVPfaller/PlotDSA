@@ -4,8 +4,7 @@ IEC 62304 – Class B
 System Configuration Module
 Centralized configuration definition and validation.
 """
-
-from dataclasses import dataclass
+from dataclasses import replace, dataclass
 from typing import Tuple
 import math
 
@@ -16,7 +15,8 @@ class SystemConfig:
     These should never change during runtime.
     """
     SAMPLE_RATE_HZ: int = 250
-    TIME_RESOLUTION: float = 0.25
+    TIME_RESOLUTION: float = 1.0
+    DSA_FPS: float = 1.0
     INTERVAL: float = 1.1
     NO_DATA_VALUE: float = -10000.0
     LOWEST_FREQ_HZ: float = 0.1
@@ -39,7 +39,7 @@ class SystemConfig:
     WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
     SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
     WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
-    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.99)
+    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.01, 0.8)
     DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 240.0)
     MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
     PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
@@ -95,7 +95,6 @@ class UserConfig:
         """
         Returns a new UserConfig instance with updated values.
         """
-        from dataclasses import replace
         new_config = replace(self, **kwargs)
         new_config.validate()
         return new_config

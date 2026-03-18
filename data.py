@@ -80,8 +80,8 @@ class DSABuffer:
             return time.time()
         return self.timestamps[self.last_slot % self.max_frames]
 
-    def get_view_at(self, width, height, pan_offset_sec):
-        """Return a frame starting at t0 + pan_offset_sec."""
+    def get_view_at(self, width, height, pan_sec):
+        """Return a frame starting at pan_sec."""
         if self.t0 is None:
             return time.time(), np.full((width, height), np.nan, dtype=np.float32)
 
@@ -89,7 +89,7 @@ class DSABuffer:
         width = min(width, self.max_frames)
 
         # Convert pan offset to slot index
-        slot_start = self._timestamp_to_slot(pan_offset_sec)
+        slot_start = self._timestamp_to_slot(pan_sec)
         slot_end = slot_start + width - 1
 
         # Clamp to available data
@@ -113,6 +113,7 @@ class DSABuffer:
         frame = self.data[idxs, :height]
 
         view = self.empty_buffer[:width, :height]
+        view[:] = np.nan
         view[:len(frame)] = frame
 
         return float(t_start), view
@@ -190,16 +191,16 @@ class EEGBuffer:
 
             # while enough data exists for a window
             while len(self.eeg_values) >= self.window_len:
-                window = self.eeg_values[:self.window_len]
+                window = np.asarray(self.eeg_values[:self.window_len], dtype=np.float32)
                 window_ts = self.timestamps[self.window_len - 1]
 
-                f, psd = self.processor.compute_psd_column(window.copy())
+                f, psd = self.processor.compute_psd_column(window)
 
                 output_dsa.append((window_ts.timestamp() - self.window_sec, f, psd))
 
                 # SLIDE the window forward
-                self.eeg_values = self.eeg_values[self.hop_len:]
-                self.timestamps = self.timestamps[self.hop_len:]
+                del self.eeg_values[:self.hop_len]
+                del self.timestamps[:self.hop_len]
 
         return output_dsa, samples
 

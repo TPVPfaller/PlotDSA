@@ -1,4 +1,5 @@
-from scipy.signal import sosfiltfilt, welch, butter, filtfilt, iirnotch, tf2sos
+from scipy.signal import sosfilt, welch, butter, filtfilt, iirnotch, tf2sos
+
 import numpy as np
 from config import SystemConfig
 
@@ -51,8 +52,8 @@ class DSACalculator:
         if len(eeg_values) < min_samples:
             return None, None
 
-        filtered = sosfiltfilt(self.sos, eeg_values)
-
+        filtered = sosfilt(self.sos, eeg_values)
+        filtered = np.ascontiguousarray(filtered, dtype=np.float32)
         f, psd = welch(
             filtered,
             fs=SystemConfig.SAMPLE_RATE_HZ,

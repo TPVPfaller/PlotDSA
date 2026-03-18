@@ -15,6 +15,9 @@ from settings_ui import TopBar, SettingsDialog
 from worker import ProcessingWorker
 from views import DSAView, PSDView, EEGView
 
+from config import SystemConfig
+from PySide6.QtCore import Qt
+
 
 class DSAApplication(QMainWindow):
     """Main application wiring together UI, processing thread and views."""
@@ -32,7 +35,7 @@ class DSAApplication(QMainWindow):
     def _init_ui(self):
         self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change)
 
-        self.dsa_view = DSAView(self.user_config, self._on_config_change)
+        self.dsa_view = DSAView(self.user_config, self._on_config_change, self._on_zoom_change)
         self.psd_view = PSDView(self.user_config)
         self.eeg_view = EEGView()
 
@@ -56,8 +59,9 @@ class DSAApplication(QMainWindow):
         self._sync_view_visibility()
 
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
+        self.topbar.sync_slider(self.user_config.display_minutes)
         pg.setConfigOptions(antialias=False)
-        pg.setConfigOption('useNumba', True)
+        #pg.setConfigOption('useNumba', True)
 
     def _init_worker(self):
         self.thread = QThread()
@@ -95,10 +99,6 @@ class DSAApplication(QMainWindow):
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
 
     def _show_information(self):
-        from config import SystemConfig
-        from PySide6.QtWidgets import QMessageBox
-        from PySide6.QtCore import Qt
-
         text = f"""
         <p>
             - PSD data is written to: <code>{SystemConfig.BASE_DIR}</code>
@@ -171,6 +171,7 @@ class DSAApplication(QMainWindow):
     def _on_config_change(self, new_config):
         self.user_config = new_config
 
+        self.topbar.apply_config(new_config)
         self.worker.apply_config(new_config)
         self.dsa_view.apply_config(new_config)
         self.psd_view.apply_config(new_config)

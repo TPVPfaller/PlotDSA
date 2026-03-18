@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import Qt
 from config import SystemConfig
+
 import numpy as np
 from PySide6.QtGui import QFontMetrics
 import math
@@ -168,6 +169,8 @@ class TopBar(QWidget):
         else:
             self.live_btn.show()
 
+    def apply_config(self, config):
+        self.config = config
 
 class SettingsDialog(QDialog):
     def __init__(self, config, on_config_change, parent=None):
@@ -359,7 +362,6 @@ class SettingsDialog(QDialog):
             proposed_max_freq_hz = self.sliders["Max Frequency (Hz)"][0].value()
 
             if abs(proposed_segment_sec - float(self.config.segment_sec)) > 1e-9:
-                from PySide6.QtWidgets import QMessageBox
                 resp = QMessageBox.question(
                     self,
                     "Change Segment Length",
@@ -383,5 +385,4 @@ class SettingsDialog(QDialog):
             self.on_config_change(new_config)
             self.accept()
         except ValueError as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Invalid Configuration", str(e))

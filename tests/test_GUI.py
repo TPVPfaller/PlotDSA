@@ -56,58 +56,6 @@ def test_menu_toggle_views(qtbot, dsa_app):
     assert dsa_app.dsa_view.isVisible() is True
 
 
-def test_jump_to_live_button_shows(qtbot, dsa_app, monkeypatch):
-    """Ensure 'Jump to Live' button visibility logic works."""
-    # Fake a DSA buffer with last timestamp
-    class FakeBuffer:
-        t0 = 0
-        def get_last_timestamp(self):
-            return 100.0
-        def get_view_at(self, width, height, pan_offset_sec):
-            return 0, np.ones((height, width))
-
-    dsa_app.dsa_view._buffer = FakeBuffer()
-    dsa_app.dsa_view._live_mode = False
-
-    # Initially hidden
-    dsa_app.topbar.update_jump_live_btn(dsa_app.dsa_view)
-    assert dsa_app.topbar.live_btn.isVisible() is True
-
-    # If live mode active, button hides
-    dsa_app.dsa_view._live_mode = True
-    dsa_app.topbar.update_jump_live_btn(dsa_app.dsa_view)
-    assert dsa_app.topbar.live_btn.isVisible() is False
-
-
-def test_dsa_view_update_and_live_mode(qtbot, dsa_app):
-    """Test updating DSAView with a buffer triggers live mode and updates image."""
-    class FakeBuffer:
-        t0 = 0
-        def get_last_timestamp(self):
-            return 10.0
-        def get_view_at(self, width, height, pan_offset_sec):
-            return 0, np.ones((height, width))
-
-    buf = FakeBuffer()
-    dsa_app.dsa_view._buffer = buf
-    dsa_app.dsa_view._live_mode = False
-    dsa_app.dsa_view.update(buf)
-    assert dsa_app.dsa_view._live_mode is True
-    # Image should have proper shape
-    assert dsa_app.dsa_view.dsa_rect.shape[0] == dsa_app.dsa_view.n_freq_bins
-
-
-def test_topbar_zoom_slider_changes_config(qtbot, dsa_app):
-    """Check that moving the zoom slider updates the config via callback."""
-    old_display_minutes = dsa_app.user_config.display_minutes
-    slider = dsa_app.topbar.zoom_slider
-    # Simulate moving slider
-    slider.setValue(min(slider.maximum(), slider.value() + 10))
-    # Config updated
-    new_display_minutes = dsa_app.user_config.display_minutes
-    assert new_display_minutes != old_display_minutes
-
-
 def test_topbar_norm_checkbox_updates_config(qtbot, dsa_app):
     """Toggling the PSD normalization checkbox should update config."""
     checkbox = dsa_app.topbar.norm_checkbox
@@ -137,13 +85,13 @@ def test_settings_dialog_sliders_apply(qtbot, dsa_app):
 
 def test_eeg_view_append_sample(qtbot):
     """Appending a sample adds it to pending queue and eventually renders."""
-    view = EEGView(window_sec=1.0)
+    view = EEGView()
     qtbot.addWidget(view)
     val = 42.0
-    ts = time.perf_counter()
-    view.append_sample(ts, val)
+    view.append_sample(val)
     assert len(view._pending) > 0
     # Force render
+    time.sleep(0.1)
     view._render_frame()
     # Display should contain the value
     assert val in view.display

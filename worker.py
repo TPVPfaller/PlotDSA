@@ -1,8 +1,9 @@
 import time
 import math
 from concurrent.futures import ThreadPoolExecutor
+
 from PySide6.QtCore import QObject, Signal, Slot
-from data import EEGStream, EEGBuffer, DSABuffer, Output
+from data import EEGStream, EEGBuffer, Output
 from config import SystemConfig
 
 
