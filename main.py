@@ -5,7 +5,10 @@ EEG Density Spectral Array Viewer
 """
 
 import sys
+sys.argv += ['-platform', 'windows:darkmode=2']
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox
+import qdarktheme
+
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QAction
 import pyqtgraph as pg
@@ -26,6 +29,8 @@ class DSAApplication(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("EEG Density Spectral Array")
+
+        self.resize(1000, 650)
 
         self.user_config = UserConfig()
         self._init_ui()
@@ -61,7 +66,6 @@ class DSAApplication(QMainWindow):
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
         self.topbar.sync_slider(self.user_config.display_minutes)
         pg.setConfigOptions(antialias=False)
-        #pg.setConfigOption('useNumba', True)
 
     def _init_worker(self):
         self.thread = QThread()
@@ -77,7 +81,7 @@ class DSAApplication(QMainWindow):
     def _init_timers(self):
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self._update_status)
-        self.status_timer.start(500)
+        self.status_timer.start(250)
 
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
@@ -87,7 +91,6 @@ class DSAApplication(QMainWindow):
         action_settings.triggered.connect(self._open_settings)
         menu.addAction(action_settings)
 
-        # NEW: information
         action_info = QAction("Information", self)
         action_info.triggered.connect(self._show_information)
         menu.addAction(action_info)
@@ -186,7 +189,11 @@ class DSAApplication(QMainWindow):
 
 
 def main():
+    qdarktheme.enable_hi_dpi()
+
     app = QApplication(sys.argv)
+    qdarktheme.setup_theme()
+
     win = DSAApplication()
     win.show()
     sys.exit(app.exec())

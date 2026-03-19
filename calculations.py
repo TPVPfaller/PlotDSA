@@ -52,8 +52,8 @@ class DSACalculator:
         if len(eeg_values) < min_samples:
             return None, None
 
-        filtered = sosfilt(self.sos, eeg_values)
-        filtered = np.ascontiguousarray(filtered, dtype=np.float32)
+        #filtered = sosfilt(self.sos, eeg_values)
+        filtered = np.ascontiguousarray(eeg_values, dtype=np.float32)
         f, psd = welch(
             filtered,
             fs=SystemConfig.SAMPLE_RATE_HZ,

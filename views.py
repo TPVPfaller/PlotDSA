@@ -251,7 +251,7 @@ class PSDView(pg.PlotWidget):
         self.config = config
 
         self.setLabel("bottom", "Frequency", units="Hz")
-        self.setLabel("left", "Power Spectral Density", units="dB/Hz")
+        self.setLabel("left", "Power", units="dB")
         self.setMenuEnabled(False)
         self.showGrid(x=True, y=True)
         self.setMouseEnabled(x=False, y=False)

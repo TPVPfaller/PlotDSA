@@ -1,38 +1,42 @@
 import time
+import math
+import numpy as np
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QScrollArea
+    QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
+    QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox, QMessageBox
 )
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QSlider, QLabel, QGridLayout, QFrame, QSizePolicy, \
-    QCheckBox
-from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
+
 from config import SystemConfig
 
-import numpy as np
-from PySide6.QtGui import QFontMetrics
-import math
-
+FONT_SIZE = 15
 
 class TopBar(QWidget):
-    def __init__(self, config, on_config_change, on_zoom_change,):
+    def __init__(self, config, on_config_change, on_zoom_change):
         super().__init__()
         self.config = config
         self.on_config_change = on_config_change
         self.on_zoom_change = on_zoom_change
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
 
         # --- Zoom slider ---
         self.zoom_label = QLabel("Zoom:")
-        self.zoom_label.setMinimumHeight(50)
+        self.zoom_label.setMinimumHeight(60)
+        self.zoom_label.setStyleSheet(f"font-size: {FONT_SIZE}px;")
         layout.addWidget(self.zoom_label)
+
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
-        self.zoom_slider.setValue(int(SystemConfig.DISPLAY_MINUTES / SystemConfig.DISPLAY_MINUTES_BOUNDS[1]) * 100)
+        self.zoom_slider.setValue(
+            int(SystemConfig.DISPLAY_MINUTES / SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 100)
+        )
+        self.zoom_slider.setFixedHeight(30)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
@@ -40,47 +44,42 @@ class TopBar(QWidget):
 
         # --- Live indicator ---
         self.connection_indicator = QLabel("DISCONNECTED")
-        self.connection_indicator.setStyleSheet("""
-                        QLabel {
-                            color: palette(window-text);
-                            background-color: red;
-                            padding: 5px 10px;
-                            border-radius: 5px;
-                            font-weight: bold;
-                            font-size: 11px;
-                        }
-                    """)
-        self.connection_indicator.setMinimumHeight(50)
-        self.connection_indicator.setMinimumWidth(120)
+        self.connection_indicator.setStyleSheet(f"""
+            QLabel {{
+                color: palette(window-text);
+                background-color: red;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: {FONT_SIZE}px;
+            }}
+        """)
+        self.connection_indicator.setMinimumHeight(60)
+        self.connection_indicator.setMinimumWidth(140)
         self.connection_indicator.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.connection_indicator)
         layout.setAlignment(self.connection_indicator, Qt.AlignVCenter)
 
+        # --- Live button ---
         self.live_btn = QPushButton("▶ Live")
-        self.live_btn.setStyleSheet("""
-            QPushButton {
+        self.live_btn.setMinimumHeight(60)
+        self.live_btn.setMinimumWidth(100)
+        self.live_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: palette(button);
                 color: palette(button-text);
                 border: 1px solid palette(mid);
-                border-radius: 5px;
-                padding: 5px 10px;
+                border-radius: 6px;
+                padding: 8px 12px;
                 font-weight: bold;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: palette(midlight);
-            }
-            QPushButton:pressed {
-                background-color: palette(mid);
-            }
+                font-size: {FONT_SIZE}px;
+            }}
+            QPushButton:hover {{ background-color: palette(midlight); }}
+            QPushButton:pressed {{ background-color: palette(mid); }}
         """)
-        self.live_btn.setMinimumHeight(50)
-        self.live_btn.setMinimumWidth(80)
-
         policy = self.live_btn.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.live_btn.setSizePolicy(policy)
-
         self.live_btn.hide()
         layout.addWidget(self.live_btn)
         layout.setAlignment(self.live_btn, Qt.AlignVCenter)
@@ -90,18 +89,18 @@ class TopBar(QWidget):
         # --- PSD Normalization Checkbox ---
         self.norm_checkbox = QCheckBox("Relative PSD")
         self.norm_checkbox.setChecked(self.config.normalize_psd)
-        self.norm_checkbox.setMinimumHeight(60)
-
-        self.norm_checkbox.setStyleSheet("""
-            QCheckBox {
-                font-weight: bold;
-                font-size: 11px;
-                padding: 5px;
-            }
+        self.norm_checkbox.setMinimumHeight(70)
+        self.norm_checkbox.setStyleSheet(f"""
+            QCheckBox::indicator {{
+                width: 30px;   /* width of the box */
+                height: 30px;  /* height of the box */
+            }}
+            QCheckBox {{
+                
+                font-size: {FONT_SIZE}pt;
+            }}
         """)
-
         self.norm_checkbox.toggled.connect(self._normalize_toggled)
-
         layout.addWidget(self.norm_checkbox)
         layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
 
@@ -110,26 +109,15 @@ class TopBar(QWidget):
         self.on_config_change(new_config)
 
     def _zoom_changed(self, value):
-        min_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
-        max_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS[1]
-
-        # Non-linear: square the normalized value so low end (zoomed out)
-        # is coarse and high end (zoomed in) has finer control
+        min_minutes, max_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS
         t = 1.0 - ((1.0 - (value - 1) / 99.0) ** 2)
         new_display_minutes = max_minutes - t * (max_minutes - min_minutes)
-
         self.on_zoom_change(new_display_minutes)
 
     def sync_slider(self, display_minutes):
-        """Update sliders based on current config without triggering feedback."""
-        # Sync Zoom Slider
-        min_min = SystemConfig.DISPLAY_MINUTES_BOUNDS[0]
-        max_min = SystemConfig.DISPLAY_MINUTES_BOUNDS[1]
-        curr_min = display_minutes
-
-        t = (max_min - curr_min) / (max_min - min_min) if max_min != min_min else 0
+        min_min, max_min = SystemConfig.DISPLAY_MINUTES_BOUNDS
+        t = (max_min - display_minutes) / (max_min - min_min) if max_min != min_min else 0
         val_zoom = 1 + 99.0 * (1.0 - np.sqrt(max(0, 1.0 - t)))
-
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(np.round(val_zoom)))
         self.zoom_slider.blockSignals(False)
@@ -140,28 +128,28 @@ class TopBar(QWidget):
     def update_indicator(self):
         if time.time() - self._last_data_receive_time < 2.0:
             self.connection_indicator.setText("CONNECTED")
-            self.connection_indicator.setStyleSheet("""
-                            QLabel {
-                                color: palette(window-text);
-                                background-color: green;
-                                padding: 5px 10px;
-                                border-radius: 5px;
-                                font-weight: bold;
-                                font-size: 11px;
-                            }
-                        """)
+            self.connection_indicator.setStyleSheet(f"""
+                QLabel {{
+                    color: palette(window-text);
+                    background-color: #27ff24;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    font-size: {FONT_SIZE}px;
+                }}
+            """)
         else:
             self.connection_indicator.setText("DISCONNECTED")
-            self.connection_indicator.setStyleSheet("""
-                            QLabel {
-                                color: palette(window-text);
-                                background-color: red;
-                                padding: 5px 10px;
-                                border-radius: 5px;
-                                font-weight: bold;
-                                font-size: 11px;
-                            }
-                        """)
+            self.connection_indicator.setStyleSheet(f"""
+                QLabel {{
+                    color: palette(window-text);
+                    background-color: #fc3232;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    font-size: {FONT_SIZE}px;
+                }}
+            """)
 
     def update_jump_live_btn(self, dsa_view):
         if dsa_view.dsa_buffer.t0 is None or dsa_view.live_mode:
@@ -172,19 +160,19 @@ class TopBar(QWidget):
     def apply_config(self, config):
         self.config = config
 
+
 class SettingsDialog(QDialog):
     def __init__(self, config, on_config_change, parent=None):
         super().__init__(parent)
-
         self.setWindowTitle("System Settings")
-        self.setMinimumSize(520, 240)
+        self.setMinimumSize(540, 260)
 
         self.config = config
         self.on_config_change = on_config_change
 
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(6)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(10, 10, 10, 10)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -192,9 +180,8 @@ class SettingsDialog(QDialog):
 
         container = QWidget()
         grid = QGridLayout(container)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(4)
-        # Column policy: [0]=labels (fixed), [1]=sliders (expanding), [2]=values (fixed)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
         grid.setColumnStretch(0, 0)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(2, 0)
@@ -205,14 +192,13 @@ class SettingsDialog(QDialog):
         def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0,
                        decimals_override=None):
             nonlocal row_idx
-            row_h = 26
+            row_h = 36  # taller for touch
 
             name_label = QLabel(name)
-            name_label.setStyleSheet("font-size: 16px;")
-            name_label.setContentsMargins(0, 0, 0, 0)
-            name_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+            name_label.setStyleSheet("font-size: 18px;")
             name_label.setFixedHeight(row_h)
             name_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            name_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
 
             slider = QSlider(Qt.Horizontal)
             slider.setMinimum(int(bounds[0] * scale))
@@ -220,42 +206,14 @@ class SettingsDialog(QDialog):
             slider.setValue(int(value * scale))
             slider.setFixedHeight(row_h)
             slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            # Scoped style to normalize handle/groove vertical centering on Windows themes
-            slider.setStyleSheet(
-                """
-                QSlider::groove:horizontal {
-                    height: 5px;
-                    background: palette(mid);
-                    border: 1px solid palette(shadow);
-                    margin: 0px 0px;
-                    border-radius: 2px;
-                }
-                QSlider::sub-page:horizontal {
-                    background: palette(highlight);
-                    border-radius: 2px;
-                }
-                QSlider::add-page:horizontal {
-                    background: palette(mid);
-                    border-radius: 2px;
-                }
-                QSlider::handle:horizontal {
-                    width: 14px;
-                    height: 14px;
-                    margin: -10px 0px;
-                    border-radius: 7px;
-                    background: palette(window-text);
-                    border: 1px solid palette(base);
-                }
-                """
-            )
+            slider.setStyleSheet("""
+                QSlider::groove:horizontal { height: 6px; background: palette(mid); border-radius: 3px; }
+                QSlider::sub-page:horizontal { background: palette(highlight); border-radius: 3px; }
+                QSlider::add-page:horizontal { background: palette(mid); border-radius: 3px; }
+                QSlider::handle:horizontal { width: 18px; height: 18px; margin: -6px 0; border-radius: 9px; background: palette(window-text); border: 1px solid palette(base); }
+            """)
 
-            # Determine fixed decimal formatting
-            if decimals_override is not None:
-                decimals = max(0, int(decimals_override))
-            else:
-                decimals = 0
-                if scale and scale > 1:
-                    decimals = max(0, int(round(math.log10(scale))))
+            decimals = decimals_override if decimals_override is not None else max(0, int(round(math.log10(scale))) if scale > 1 else 0)
 
             def fmt_number(x: float) -> str:
                 return f"{x:.{decimals}f}"
@@ -263,26 +221,19 @@ class SettingsDialog(QDialog):
             def fmt_with_unit(x: float) -> str:
                 return f"{fmt_number(x)}{unit}"
 
-            # Initial label with unit
             value_label = QLabel(fmt_with_unit(value * display_factor))
-            value_label.setStyleSheet("font-size: 16px;")
-            value_label.setAlignment(Qt.AlignLeft)
+            value_label.setStyleSheet("font-size: 18px;")
             value_label.setFixedHeight(row_h)
             value_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            value_label.setAlignment(Qt.AlignLeft)
 
-            # Fixed width based on transformed bounds text width (including unit)
             fm = QFontMetrics(value_label.font())
             b0_txt = fmt_with_unit(bounds[0] * display_factor)
             b1_txt = fmt_with_unit(bounds[1] * display_factor)
-            max_w = max(fm.horizontalAdvance(b0_txt), fm.horizontalAdvance(b1_txt)) + 12
+            max_w = max(fm.horizontalAdvance(b0_txt), fm.horizontalAdvance(b1_txt)) + 25
             value_label.setFixedWidth(max_w)
 
-            def update(val):
-                # val is in scaled integer space; convert back, then apply display factor
-                shown = (val / scale) * display_factor if scale != 0 else 0.0
-                value_label.setText(fmt_with_unit(shown))
-
-            slider.valueChanged.connect(update)
+            slider.valueChanged.connect(lambda val: value_label.setText(fmt_with_unit(val / scale * display_factor)))
 
             grid.addWidget(name_label, row_idx, 0, alignment=Qt.AlignVCenter | Qt.AlignRight)
             grid.addWidget(slider, row_idx, 1, alignment=Qt.AlignVCenter)
@@ -291,43 +242,38 @@ class SettingsDialog(QDialog):
             self.sliders[name] = (slider, scale)
             row_idx += 1
 
+        # --- Add sliders ---
         add_slider("Window (s)", SystemConfig.WINDOW_SEC_BOUNDS, config.window_sec, 1, unit=" s")
         add_slider("Segment (s)", SystemConfig.SEGMENT_SEC_BOUNDS, config.segment_sec, 10, unit=" s")
-        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100, unit=" %",
-                   display_factor=100.0, decimals_override=0)
-        add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100, unit=" %",
-                   display_factor=100.0, decimals_override=0)
+        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
+        add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
         add_slider("Max Frequency (Hz)", SystemConfig.MAX_FREQ_HZ_BOUNDS, config.max_freq_hz, 1, unit=" Hz")
 
-        # --- Buttons row: Reset on the left, Apply on the right ---
+        # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
-        reset_btn.setMinimumHeight(40)
-        reset_btn.setStyleSheet("font-size: 16px;")
+        reset_btn.setMinimumHeight(50)
+        reset_btn.setStyleSheet("font-size: 18px;")
         reset_btn.clicked.connect(self._reset_to_defaults)
 
         apply_btn = QPushButton("Apply and Close")
-        apply_btn.setMinimumHeight(40)
-        apply_btn.setStyleSheet("font-size: 16px;")
+        apply_btn.setMinimumHeight(50)
+        apply_btn.setStyleSheet("font-size: 18px;")
         apply_btn.clicked.connect(self._apply)
 
         button_bar = QWidget()
         bar_layout = QHBoxLayout(button_bar)
-        bar_layout.setContentsMargins(0, 4, 0, 0)
-        bar_layout.setSpacing(8)
+        bar_layout.setContentsMargins(0, 6, 0, 0)
+        bar_layout.setSpacing(10)
         bar_layout.addWidget(reset_btn, alignment=Qt.AlignLeft)
         bar_layout.addStretch(1)
         bar_layout.addWidget(apply_btn, alignment=Qt.AlignRight)
 
-        # Button bar spans all columns
         grid.addWidget(button_bar, row_idx, 0, 1, 3)
 
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
 
     def _reset_to_defaults(self):
-        """Reset sliders to factory defaults displayed in this dialog without applying.
-        No persistent change until the user confirms with Apply.
-        """
         resp = QMessageBox.question(
             self,
             "Reset Settings",
@@ -365,15 +311,12 @@ class SettingsDialog(QDialog):
                 resp = QMessageBox.question(
                     self,
                     "Change Segment Length",
-                    (
-                        "Changing the segment length will clear the current DSA view/history.\n\n"
-                        "Do you want to proceed?"
-                    ),
+                    "Changing the segment length will clear the current DSA view/history.\n\nDo you want to proceed?",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
                 if resp != QMessageBox.Yes:
-                    return  # Abort apply; let the user adjust or cancel
+                    return
 
             new_config = self.config.update(
                 window_sec=proposed_window_sec,
