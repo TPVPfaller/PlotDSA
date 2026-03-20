@@ -157,16 +157,14 @@ class EEGBuffer:
         self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
         self.hop_len = max(1, int(self.window_len * (1.0 - overlap)))
 
-    def _is_valid_sample(self, timestamp, value):
+    def _get_ts_diff(self, timestamp, value):
         if self.last_ts is not None:
             expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
-            if abs((timestamp - expected).total_seconds()) > SystemConfig.TIME_DIFF_TOLERANCE:
-                print(f"Timestamp fault:{timestamp}, expected {expected}")
-                return False
-            if value is None or np.isnan(value):
-                print(f"Invalid sample: {timestamp}, {value}")
-                return False
-        return True
+            return abs((timestamp - expected).total_seconds())
+        if value is None or np.isnan(value):
+            print(f"Invalid sample: {timestamp}, {value}")
+            return SystemConfig.DSA_TIME_DIFF_TOLERANCE + SystemConfig.EEG_TIME_DIFF_TOLERANCE
+        return 0.0
 
     def get_dsa_columns(self, data):
         if data is None or len(data) == 0:
@@ -177,16 +175,21 @@ class EEGBuffer:
 
         for ts, eeg in data:
             # continuity check
-            if not self._is_valid_sample(ts, eeg):
-                self.eeg_values.clear()
-                self.timestamps.clear()
-                self.last_ts = None
+            diff = self._get_ts_diff(ts, eeg)
+            if diff > SystemConfig.EEG_TIME_DIFF_TOLERANCE:
                 samples.append(np.nan)
-                continue
+                # We accept a few missing values
+                if diff > SystemConfig.DSA_TIME_DIFF_TOLERANCE:
+                    print("Timestamp difference")
+                    self.eeg_values.clear()
+                    self.timestamps.clear()
+                    self.last_ts = None
+                    continue
 
             self.eeg_values.append(eeg)
             self.timestamps.append(ts)
             self.last_ts = ts
+
             samples.append(float(eeg))
 
             # while enough data exists for a window

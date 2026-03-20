@@ -92,6 +92,7 @@ class DSAApplication(QMainWindow):
         menu.addAction(action_settings)
 
         action_info = QAction("Information", self)
+        action_info.setShortcut("Ctrl+H")
         action_info.triggered.connect(self._show_information)
         menu.addAction(action_info)
 
@@ -103,24 +104,24 @@ class DSAApplication(QMainWindow):
 
     def _show_information(self):
         text = f"""
-        <p>
-            - PSD data is written to: <code>{SystemConfig.BASE_DIR}</code>
+        <p style="font-size:12pt;">
+            - PSD files are saved in: <code>{SystemConfig.BASE_DIR}</code>
         </p>
-        <p>
-            - The viewer can display a maximum of <b>4 hours</b> of EEG data.
+        <p style="font-size:12pt;">
+            - Viewer supports up to <b>{int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1]/60)} hours</b> of EEG data
         </p>
-        <p>
-            - Incoming EEG samples are expected at <b>{SystemConfig.SAMPLE_RATE_HZ} Hz</b>.
+        <p style="font-size:12pt;">
+            - EEG should arrive at <b>{SystemConfig.SAMPLE_RATE_HZ} Hz</b>
         </p>
-        <p>
-            - Changing the segment window changes the <b>frequency resolution</b> of the PSD.
+        <p style="font-size:12pt;">
+            - Adjusting segment (s) changes the frequency resolution
         </p>
-        <ul>
-            <li>The current DSA history is deleted</li>
-            <li>New PSD data is written to a different CSV file</li>
+        <ul style="font-size:12pt;">
+            <li>DSA history will be cleared</li>
+            <li>New PSD data is written to a new CSV file</li>
         </ul>
-        <p>
-            - For more information see https://github.com/TPVPfaller/PlotDSA.
+        <p style="font-size:12pt;">
+            - More info: <a href="https://github.com/TPVPfaller/PlotDSA">GitHub</a>
         </p>
         """
 
@@ -128,7 +129,7 @@ class DSAApplication(QMainWindow):
         msg.setWindowTitle("Information")
         msg.setTextFormat(Qt.RichText)
         msg.setText(text)
-        msg.setIcon(QMessageBox.NoIcon)
+        msg.setIcon(QMessageBox.Information)
         msg.exec()
 
     def _create_toggle_action(self, menu, text, default, widget):

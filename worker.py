@@ -56,7 +56,6 @@ class ProcessingWorker(QObject):
                 samples = self.stream.read_samples()
                 dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
 
-                # Emit each individual sample for the EEG view
                 if checked_samples:
                     self.new_samples.emit(checked_samples)
 

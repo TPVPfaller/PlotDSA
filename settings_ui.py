@@ -46,8 +46,8 @@ class TopBar(QWidget):
         self.connection_indicator = QLabel("DISCONNECTED")
         self.connection_indicator.setStyleSheet(f"""
             QLabel {{
-                color: palette(window-text);
-                background-color: red;
+                color: white;
+                background-color: #6b0000;
                 padding: 8px 12px;
                 border-radius: 6px;
                 font-weight: bold;
@@ -91,13 +91,12 @@ class TopBar(QWidget):
         self.norm_checkbox.setChecked(self.config.normalize_psd)
         self.norm_checkbox.setMinimumHeight(70)
         self.norm_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                font-size: {FONT_SIZE}pt;
+            }}
             QCheckBox::indicator {{
                 width: 30px;   /* width of the box */
                 height: 30px;  /* height of the box */
-            }}
-            QCheckBox {{
-                
-                font-size: {FONT_SIZE}pt;
             }}
         """)
         self.norm_checkbox.toggled.connect(self._normalize_toggled)
@@ -130,8 +129,8 @@ class TopBar(QWidget):
             self.connection_indicator.setText("CONNECTED")
             self.connection_indicator.setStyleSheet(f"""
                 QLabel {{
-                    color: palette(window-text);
-                    background-color: #27ff24;
+                    color: white;
+                    background-color: #034003;
                     padding: 8px 12px;
                     border-radius: 6px;
                     font-weight: bold;
@@ -142,8 +141,8 @@ class TopBar(QWidget):
             self.connection_indicator.setText("DISCONNECTED")
             self.connection_indicator.setStyleSheet(f"""
                 QLabel {{
-                    color: palette(window-text);
-                    background-color: #fc3232;
+                    color: white;
+                    background-color: #6b0000;
                     padding: 8px 12px;
                     border-radius: 6px;
                     font-weight: bold;

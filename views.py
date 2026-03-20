@@ -301,7 +301,14 @@ class EEGView(pg.PlotWidget):
         self.setMouseEnabled(False, False)
         self.setInteractive(False)
 
-        # Curves (max 2 visible segments needed)
+        self.nan_curve = self.plot(
+            pen=None,
+            symbol='o',
+            symbolBrush='r',  # fill color red
+            symbolSize=7,  # size
+            symbolPen=None
+        )
+
         self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=2))
         self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=2))
 
@@ -363,6 +370,9 @@ class EEGView(pg.PlotWidget):
         now = time.perf_counter()
         changed = False
 
+        # Mask where NaNs originally were
+        nan_mask = np.isnan(self.display)
+
         # --- Consume pending samples ---
         while self._pending and self._pending[0][0] <= now:
             _, v = self._pending.popleft()
@@ -388,9 +398,7 @@ class EEGView(pg.PlotWidget):
             interp_head = float(self.display_head)
 
         # --- Update sweep line ---
-        self.update_line.setPos(
-            (interp_head / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC
-        )
+        self.update_line.setPos((interp_head / self.N) * SystemConfig.EEG_VIEW_WINDOW_SEC)
 
         head = int(interp_head) % self.N
 
@@ -432,3 +440,13 @@ class EEGView(pg.PlotWidget):
                 self.display[gap_end: head + 1],
             )
             self.curve_b.clear()
+
+        nan_indices = np.where(nan_mask)[0]
+
+        if len(nan_indices) > 0:
+            self.nan_curve.setData(
+                self.x[nan_indices],
+                np.zeros_like(nan_indices, dtype=np.float32),
+            )
+        else:
+            self.nan_curve.clear()

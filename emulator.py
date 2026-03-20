@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import math
 from pylsl import StreamInfo, StreamOutlet
 from config import SystemConfig
+import random
 
 # =========================
 # Configuration
@@ -75,6 +76,8 @@ def main():
 
                 for idx, value in enumerate(values):
                     ts += timedelta(seconds=interval)
+                    if random.random() < 0.001:
+                        continue
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
                     samples.append(f"{ts_str},{value}")
 

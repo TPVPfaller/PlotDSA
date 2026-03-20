@@ -14,13 +14,14 @@ class SystemConfig:
     Immutable system constants.
     These should never change during runtime.
     """
-    SAMPLE_RATE_HZ: int = 250
+    SAMPLE_RATE_HZ: int = 400
     TIME_RESOLUTION: float = 1.0
     DSA_FPS: float = 1.0
     INTERVAL: float = 1.1
     NO_DATA_VALUE: float = -10000.0
     LOWEST_FREQ_HZ: float = 0.1
-    TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
+    DSA_TIME_DIFF_TOLERANCE: float = 2.0 / SAMPLE_RATE_HZ
+    EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
     BASE_DIR: str = "C:\\temp\\VSCaptureWave"
     EEG_VIEW_WINDOW_SEC: float = 4.0
 
