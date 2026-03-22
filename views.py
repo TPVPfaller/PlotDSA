@@ -37,6 +37,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._pan_sec = 0.0
         self._min_zoom = 1.0
         self._max_zoom = 10.0
+
+        self.freqs = [0.0] * 100
         self._dragging = False
         self._last_mouse_pos = None
         self.t0 = datetime.datetime.now().timestamp()
@@ -101,13 +103,13 @@ class DSAView(pg.GraphicsLayoutWidget):
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= self.config.max_freq_hz)
         return len(freq_bins[mask])
 
+    #TODO: delete buffer
     # ------------------ Update & Rendering ------------------ #
     def update(self, dsa_column, force_update=False):
         if dsa_column is not None:
             ts, freqs, psd = dsa_column
+            self.freqs = freqs
             self.dsa_buffer.append(ts, freqs, psd)
-        if time.time() - self._last_render < SystemConfig.DSA_FPS and not force_update:
-            return
         self._last_render = time.time()
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / SystemConfig.TIME_RESOLUTION))
@@ -124,7 +126,7 @@ class DSAView(pg.GraphicsLayoutWidget):
                 self._pan_sec = max_offset
 
         self.t0, self.dsa_rect = self.dsa_buffer.get_view_at(
-            width=n_time_bins, height=self.n_freq_bins, pan_sec=self._pan_sec
+            width=n_time_bins, height=len(self.freqs), pan_sec=self._pan_sec
         )
         data = self.dsa_rect.copy()
         data = np.ascontiguousarray(data) # array is stored in a continuous block of memory
@@ -161,6 +163,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.update(None, force_update=True)
         #self.on_config_change(self.config)
 
+    #TODO: buttons for sliding
     # ------------------ Mouse & Gesture ------------------ #
     def mousePressEvent(self, ev):
         super().mousePressEvent(ev)
@@ -183,6 +186,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             self._pan_sec -= dt
             self.live_mode = False
             self.update(None, force_update=True)
+
             ev.accept()
         else:
             super().mouseMoveEvent(ev)
@@ -283,7 +287,7 @@ class PSDView(pg.PlotWidget):
         np.divide(psd, col_sums, out=psd)
         return psd
 
-
+# 7.5 mm/sekunde 15 mm/sekunde eeg view skalieren mit application window. 5 microvolt pro millimeter. 27 zoll pc. einstellung in system settings
 class EEGView(pg.PlotWidget):
     """Real-time circular EEG display with smooth sweep line + gap (optimized)."""
 

@@ -127,7 +127,7 @@ class DSABuffer:
         nperseg = int(self.segment_sec * SystemConfig.SAMPLE_RATE_HZ)
         freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
         mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
-        self.freq_bins = freq_bins[mask]
+        self.freq_bins = np.arange(0.5, 50.0+0.5, 0.5)
 
         self.data = np.full((self.max_frames, len(self.freq_bins)), np.nan, dtype=np.float32)
         self.empty_buffer = np.empty_like(self.data)

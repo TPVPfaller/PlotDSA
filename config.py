@@ -14,9 +14,9 @@ class SystemConfig:
     Immutable system constants.
     These should never change during runtime.
     """
-    SAMPLE_RATE_HZ: int = 400
+    SAMPLE_RATE_HZ: int = 250
     TIME_RESOLUTION: float = 1.0
-    DSA_FPS: float = 1.0
+    DSA_FPS: float = 0.5
     INTERVAL: float = 1.1
     NO_DATA_VALUE: float = -10000.0
     LOWEST_FREQ_HZ: float = 0.1
@@ -26,22 +26,22 @@ class SystemConfig:
     EEG_VIEW_WINDOW_SEC: float = 4.0
 
     # Default values
-    WINDOW_SEC: int = 9
-    SEGMENT_SEC: float = 2.0
-    SEGMENT_OVERLAP: float = 0.5
-    WINDOW_OVERLAP: float = 0.85
+    WINDOW_SEC: int = 10
+    SEGMENT_SEC: float = 10.0
+    SEGMENT_OVERLAP: float = 0.0
+    WINDOW_OVERLAP: float = 0.10
     DISPLAY_MINUTES: float = 3.0
     MAX_FREQ_HZ: int = 30
-    PSD_DB_MIN: int = -20
+    PSD_DB_MIN: int = -25 # TODO: min max manuell oder calibration
     PSD_DB_MAX: int = 20
-    NORMALIZE_PSD: bool = False
+    NORMALIZE_PSD: bool = False # TODO: Calibrate color scheme
 
     # Bounds (class-level, not instance attributes)
     WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
-    SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 4.0)
+    SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 30.0)
     WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
     SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.8)
-    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 240.0)
+    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*12.0) # 12 hours of data
     MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
     PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
     PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)

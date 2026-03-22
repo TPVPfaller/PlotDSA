@@ -76,14 +76,13 @@ def main():
 
                 for idx, value in enumerate(values):
                     ts += timedelta(seconds=interval)
-                    if random.random() < 0.001:
-                        continue
+
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
                     samples.append(f"{ts_str},{value}")
 
                     # Push to LSL
                     if idx % SAMPLE_RATE_HZ == 0:
-                        time.sleep(0.99)
+                        time.sleep(0.1)
                         for s in samples:
                             outlet.push_sample([s])
                         samples = []

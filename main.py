@@ -30,6 +30,20 @@ class DSAApplication(QMainWindow):
 
         self.setWindowTitle("EEG Density Spectral Array")
 
+        import tkinter as tk
+
+        root = tk.Tk()
+        width = root.winfo_screenwidth()
+        height = root.winfo_screenheight()
+
+        print("Width:", width)
+        print("Height:", height)
+
+        screen_width_mm = root.winfo_screenmmwidth()
+        screen_height_mm = root.winfo_screenmmheight()
+        print(f"  Größe:     {screen_width_mm} x {screen_height_mm} mm")
+
+        root.destroy()
         self.resize(1000, 650)
 
         self.user_config = UserConfig()

@@ -42,7 +42,7 @@ class TopBar(QWidget):
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
         layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
 
-        # --- Live indicator ---
+        # --- Live indicator --- # TODO: smaller
         self.connection_indicator = QLabel("DISCONNECTED")
         self.connection_indicator.setStyleSheet(f"""
             QLabel {{

@@ -13,6 +13,8 @@ class DSACalculator:
         self.notch_freq = 50.0  # line noise
         self.notch_bw_hz = 1.0  # bandwidth for simple notch FIR
 
+        self.freq_mask = None
+
         self._precompute_filters()
         self._update_welch_params()
 
@@ -53,17 +55,17 @@ class DSACalculator:
         # Apply FIR filters
         filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
 
+        # 5 seconds window, max 10%-20% overlap
+
         f, psd = welch(
             filtered,
             fs=SystemConfig.SAMPLE_RATE_HZ,
-            window="hann",
-            nperseg=self.nperseg,
-            noverlap=self.noverlap,
-            scaling="density",
-            detrend=False,
-            average="mean",
+            nperseg=2 * SystemConfig.SAMPLE_RATE_HZ,
+            noverlap=None,  # matches MATLAB [] default (50% overlap internally)
+            #nfft=2 * SystemConfig.SAMPLE_RATE_HZ,
+            return_onesided=True
         )
-
+        self.freq_mask = (f >= SystemConfig.LOWEST_FREQ_HZ) & (f <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
         f = f[self.freq_mask]
         psd = psd[self.freq_mask]
 
