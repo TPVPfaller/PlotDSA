@@ -244,6 +244,28 @@ class SettingsDialog(QDialog):
         add_slider("Window (s)", config.WINDOW_SEC_BOUNDS, user_config.window_sec, 1, unit=" s")
         add_slider("Window Overlap", config.WINDOW_OVERLAP_BOUNDS, user_config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
         add_slider("Max Frequency (Hz)", config.MAX_FREQ_HZ_BOUNDS, user_config.max_freq_hz, 1, unit=" Hz")
+        add_slider("PSD Min (dB)", config.PSD_DB_MIN_BOUNDS, user_config.psd_db_min, 1, unit=" dB")
+        add_slider("PSD Max (dB)", config.PSD_DB_MAX_BOUNDS, user_config.psd_db_max, 1, unit=" dB")
+
+        psd_min_slider, _ = self.sliders["PSD Min (dB)"]
+        psd_max_slider, _ = self.sliders["PSD Max (dB)"]
+
+        def psd_min_changed(val):
+            if val >= psd_max_slider.value():
+                val = psd_max_slider.value() - 1
+                psd_min_slider.blockSignals(True)
+                psd_min_slider.setValue(val)
+                psd_min_slider.blockSignals(False)
+
+        def psd_max_changed(val):
+            if val <= psd_min_slider.value():
+                val = psd_min_slider.value() + 1
+                psd_max_slider.blockSignals(True)
+                psd_max_slider.setValue(val)
+                psd_max_slider.blockSignals(False)
+
+        psd_min_slider.valueChanged.connect(psd_min_changed)
+        psd_max_slider.valueChanged.connect(psd_max_changed)
 
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
@@ -284,6 +306,8 @@ class SettingsDialog(QDialog):
             "Window (s)": config.WINDOW_SEC,
             "Window Overlap": config.WINDOW_OVERLAP,
             "Max Frequency (Hz)": config.MAX_FREQ_HZ,
+            "PSD Min (dB)": config.PSD_DB_MIN,
+            "PSD Max (dB)": config.PSD_DB_MAX,
         }
         for name, (slider, scale) in self.sliders.items():
             if name in mapping:
@@ -298,11 +322,15 @@ class SettingsDialog(QDialog):
             proposed_window_sec = self.sliders["Window (s)"][0].value()
             proposed_window_overlap = self.sliders["Window Overlap"][0].value() / 100
             proposed_max_freq_hz = self.sliders["Max Frequency (Hz)"][0].value()
+            proposed_psd_min = self.sliders["PSD Min (dB)"][0].value()
+            proposed_psd_max = self.sliders["PSD Max (dB)"][0].value()
 
             new_config = self.user_config.update(
                 window_sec=proposed_window_sec,
                 window_overlap=proposed_window_overlap,
                 max_freq_hz=proposed_max_freq_hz,
+                psd_db_min=proposed_psd_min,
+                psd_db_max=proposed_psd_max,
             )
             self.on_config_change(new_config)
             self.accept()
