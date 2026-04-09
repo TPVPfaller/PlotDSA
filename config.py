@@ -7,45 +7,46 @@ Centralized configuration definition and validation.
 from dataclasses import replace, dataclass
 from typing import Tuple
 import math
+import numpy as np
 
 
-class SystemConfig:
-    """
-    Immutable system constants.
-    These should never change during runtime.
-    """
-    SAMPLE_RATE_HZ: int = 250
-    TIME_RESOLUTION: float = 1.0
-    DSA_FPS: float = 0.5
-    INTERVAL: float = 1.1
-    NO_DATA_VALUE: float = -10000.0
-    LOWEST_FREQ_HZ: float = 0.1
-    DSA_TIME_DIFF_TOLERANCE: float = 2.0 / SAMPLE_RATE_HZ
-    EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
-    BASE_DIR: str = "C:\\temp\\VSCaptureWave"
-    EEG_VIEW_WINDOW_SEC: float = 4.0
+"""
+Immutable system constants.
+These should never change during runtime.
+"""
+SAMPLE_RATE_HZ: int = 250
+TIME_RESOLUTION: float = 1.0
+DSA_FPS: float = 0.5
+INTERVAL: float = 1.1
+LOWEST_FREQ_HZ: float = 0.1
+DSA_TIME_DIFF_TOLERANCE: float = 2.0 / SAMPLE_RATE_HZ
+EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
+BASE_DIR: str = "C:\\temp\\VSCaptureWave"
+LSL_STREAM_NAME: str = "EEG_DATA"
+EEG_VIEW_WINDOW_SEC: float = 4.0
+N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for Welch's method
 
-    # Default values
-    WINDOW_SEC: int = 10
-    SEGMENT_SEC: float = 10.0
-    SEGMENT_OVERLAP: float = 0.0
-    WINDOW_OVERLAP: float = 0.10
-    DISPLAY_MINUTES: float = 3.0
-    MAX_FREQ_HZ: int = 30
-    PSD_DB_MIN: int = -25 # TODO: min max manuell oder calibration
-    PSD_DB_MAX: int = 20
-    NORMALIZE_PSD: bool = False # TODO: Calibrate color scheme
+# Default values
+WINDOW_SEC: int = 10
+WINDOW_OVERLAP: float = 0.10
+DISPLAY_MINUTES: float = 3.0
+MAX_FREQ_HZ: int = 30
+PSD_DB_MIN: int = -25 # TODO: min max manuell oder calibration
+PSD_DB_MAX: int = 20
+NORMALIZE_PSD: bool = False # TODO: Calibrate color scheme
 
-    # Bounds (class-level, not instance attributes)
-    WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
-    SEGMENT_SEC_BOUNDS: Tuple[float, float] = (1.0, 30.0)
-    WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
-    SEGMENT_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.8)
-    DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*12.0) # 12 hours of data
-    MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
-    PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
-    PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
-    EEG_BOUNDS: Tuple[int, int] = (-200, 200)
+# Bounds (class-level, not instance attributes)
+WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
+WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
+DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*12.0) # 12 hours of data
+MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
+PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
+PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
+EEG_BOUNDS: Tuple[int, int] = (-200, 200)
+
+_all_freq_bins = np.fft.rfftfreq(N_PER_SEGMENT, d=1 / SAMPLE_RATE_HZ)
+FREQ_MASK = ((_all_freq_bins >= LOWEST_FREQ_HZ) & (_all_freq_bins <= MAX_FREQ_HZ_BOUNDS[1]))
+FREQ_BINS = _all_freq_bins[FREQ_MASK]
 
 
 @dataclass(frozen=True)
@@ -55,15 +56,13 @@ class UserConfig:
     Immutable at runtime; updates return a new instance.
     """
 
-    window_sec: int = SystemConfig.WINDOW_SEC
-    segment_sec: float = SystemConfig.SEGMENT_SEC
-    segment_overlap: float = SystemConfig.SEGMENT_OVERLAP
-    window_overlap: float = SystemConfig.WINDOW_OVERLAP
-    display_minutes: float = SystemConfig.DISPLAY_MINUTES
-    max_freq_hz: int = SystemConfig.MAX_FREQ_HZ
-    psd_db_min: int = SystemConfig.PSD_DB_MIN
-    psd_db_max: int = SystemConfig.PSD_DB_MAX
-    normalize_psd: bool = SystemConfig.NORMALIZE_PSD
+    window_sec: int = WINDOW_SEC
+    window_overlap: float = WINDOW_OVERLAP
+    display_minutes: float = DISPLAY_MINUTES
+    max_freq_hz: int = MAX_FREQ_HZ
+    psd_db_min: int = PSD_DB_MIN
+    psd_db_max: int = PSD_DB_MAX
+    normalize_psd: bool = NORMALIZE_PSD
 
     def __post_init__(self):
         """Validate on creation."""
@@ -74,18 +73,13 @@ class UserConfig:
         Validates the entire configuration.
         Raises ValueError if invalid.
         """
-        self._check_bounds("window_sec", self.window_sec, SystemConfig.WINDOW_SEC_BOUNDS)
-        self._check_bounds("segment_sec", self.segment_sec, SystemConfig.SEGMENT_SEC_BOUNDS)
-        self._check_bounds("display_minutes", self.display_minutes, SystemConfig.DISPLAY_MINUTES_BOUNDS)
-        self._check_bounds("max_freq_hz", self.max_freq_hz, SystemConfig.MAX_FREQ_HZ_BOUNDS)
-        self._check_bounds("psd_db_min", self.psd_db_min, SystemConfig.PSD_DB_MIN_BOUNDS)
-        self._check_bounds("psd_db_max", self.psd_db_max, SystemConfig.PSD_DB_MAX_BOUNDS)
+        self._check_bounds("window_sec", self.window_sec, WINDOW_SEC_BOUNDS)
+        self._check_bounds("window_overlap", self.window_overlap, WINDOW_OVERLAP_BOUNDS)
+        self._check_bounds("display_minutes", self.display_minutes, DISPLAY_MINUTES_BOUNDS)
+        self._check_bounds("max_freq_hz", self.max_freq_hz, MAX_FREQ_HZ_BOUNDS)
+        self._check_bounds("psd_db_min", self.psd_db_min, PSD_DB_MIN_BOUNDS)
+        self._check_bounds("psd_db_max", self.psd_db_max, PSD_DB_MAX_BOUNDS)
 
-        # Cross-field validation
-        if self.segment_sec > self.window_sec:
-            raise ValueError(
-                f"segment_sec ({self.segment_sec}) must not exceed window_sec ({self.window_sec})"
-            )
 
         if self.psd_db_min >= self.psd_db_max:
             raise ValueError(

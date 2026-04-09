@@ -1,7 +1,7 @@
 import numpy as np
 import datetime
 from data import EEGBuffer
-from config import SystemConfig
+import config
 
 
 def make_timestamp_series(start, n, sr):
@@ -11,7 +11,7 @@ def make_timestamp_series(start, n, sr):
 
 def generate_samples(n, start_time):
     samples = []
-    delta = datetime.timedelta(milliseconds=1000 / SystemConfig.SAMPLE_RATE_HZ)
+    delta = datetime.timedelta(milliseconds=1000 / config.SAMPLE_RATE_HZ)
 
     ts = start_time
     for i in range(n):
@@ -22,16 +22,11 @@ def generate_samples(n, start_time):
 
 
 def test_window_produces_dsa_column():
-    buffer = EEGBuffer(
-        window_sec=4,
-        segment_sec=1,
-        segment_overlap=0.5,
-        overlap=0.5
-    )
+    buffer = EEGBuffer(window_sec=4, overlap=0.5)
 
     start = datetime.datetime.now()
     samples = generate_samples(
-        int(4 * SystemConfig.SAMPLE_RATE_HZ),
+        int(4 * config.SAMPLE_RATE_HZ),
         start
     )
 
@@ -41,7 +36,7 @@ def test_window_produces_dsa_column():
 
 
 def test_timestamp_fault_resets_buffer():
-    buffer = EEGBuffer(4, 1, 0.5, 0.5)
+    buffer = EEGBuffer(4, 1)
 
     start = datetime.datetime.now()
     samples = generate_samples(100, start)
@@ -55,11 +50,11 @@ def test_timestamp_fault_resets_buffer():
 
 
 def test_eegbuffer_sliding_window_count():
-    sr = SystemConfig.SAMPLE_RATE_HZ
+    sr = config.SAMPLE_RATE_HZ
     window = 2.0
     overlap = 0.5
 
-    buf = EEGBuffer(window, 1.0, 0.5, overlap)
+    buf = EEGBuffer(window, 1.0)
 
     n = int(5 * sr)
     ts = make_timestamp_series(datetime.datetime.now(), n, sr)
@@ -75,19 +70,14 @@ def test_eegbuffer_sliding_window_count():
 
 
 def test_eegbuffer_resets_on_gap():
-    sr = SystemConfig.SAMPLE_RATE_HZ
-    buf = EEGBuffer(2.0, 1.0, 0.5, 0.5)
+    sr = config.SAMPLE_RATE_HZ
+    buf = EEGBuffer(2.0, 1.0)
 
     t0 = datetime.datetime.now()
 
-    good = [
-        (t0 + datetime.timedelta(seconds=i / sr), 1.0)
-        for i in range(200)
-    ]
+    good = [(t0 + datetime.timedelta(seconds=i / sr), 1.0) for i in range(200)]
 
-    gap = [
-        (t0 + datetime.timedelta(seconds=10), 1.0)
-    ]
+    gap = [(t0 + datetime.timedelta(seconds=10), 1.0)]
 
     out1, _ = buf.get_dsa_columns(good)
     out2, _ = buf.get_dsa_columns(gap)
@@ -97,7 +87,7 @@ def test_eegbuffer_resets_on_gap():
 
 def test_eegbuffer_resets_on_timestamp_gap():
     window_sec = 1.0
-    buf = EEGBuffer(window_sec, 1.0, 0.5, 0.5)
+    buf = EEGBuffer(window_sec, 1.0)
 
     base = datetime.datetime.now()
 
@@ -112,8 +102,8 @@ def test_eegbuffer_resets_on_timestamp_gap():
 
 def test_eegbuffer_produces_dsa_column():
     window_sec = 1.0
-    sample_rate = SystemConfig.SAMPLE_RATE_HZ
-    buf = EEGBuffer(window_sec, 1.0, 0.5, 0.5)
+    sample_rate = config.SAMPLE_RATE_HZ
+    buf = EEGBuffer(window_sec, 1.0)
 
     base = datetime.datetime.now()
 

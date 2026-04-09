@@ -8,15 +8,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
-
-from config import SystemConfig
+import config
 
 FONT_SIZE = 15
 
 class TopBar(QWidget):
-    def __init__(self, config, on_config_change, on_zoom_change):
+    def __init__(self, user_config, on_config_change, on_zoom_change):
         super().__init__()
-        self.config = config
+        self.user_config = user_config
         self.on_config_change = on_config_change
         self.on_zoom_change = on_zoom_change
 
@@ -34,7 +33,7 @@ class TopBar(QWidget):
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
         self.zoom_slider.setValue(
-            int(SystemConfig.DISPLAY_MINUTES / SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 100)
+            int(config.DISPLAY_MINUTES / config.DISPLAY_MINUTES_BOUNDS[1] * 100)
         )
         self.zoom_slider.setFixedHeight(30)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
@@ -88,7 +87,7 @@ class TopBar(QWidget):
 
         # --- PSD Normalization Checkbox ---
         self.norm_checkbox = QCheckBox("Relative PSD")
-        self.norm_checkbox.setChecked(self.config.normalize_psd)
+        self.norm_checkbox.setChecked(self.user_config.normalize_psd)
         self.norm_checkbox.setMinimumHeight(70)
         self.norm_checkbox.setStyleSheet(f"""
             QCheckBox {{
@@ -104,17 +103,17 @@ class TopBar(QWidget):
         layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
 
     def _normalize_toggled(self, checked):
-        new_config = self.config.update(normalize_psd=bool(checked))
+        new_config = self.user_config.update(normalize_psd=bool(checked))
         self.on_config_change(new_config)
 
     def _zoom_changed(self, value):
-        min_minutes, max_minutes = SystemConfig.DISPLAY_MINUTES_BOUNDS
+        min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS
         t = 1.0 - ((1.0 - (value - 1) / 99.0) ** 2)
         new_display_minutes = max_minutes - t * (max_minutes - min_minutes)
         self.on_zoom_change(new_display_minutes)
 
     def sync_slider(self, display_minutes):
-        min_min, max_min = SystemConfig.DISPLAY_MINUTES_BOUNDS
+        min_min, max_min = config.DISPLAY_MINUTES_BOUNDS
         t = (max_min - display_minutes) / (max_min - min_min) if max_min != min_min else 0
         val_zoom = 1 + 99.0 * (1.0 - np.sqrt(max(0, 1.0 - t)))
         self.zoom_slider.blockSignals(True)
@@ -156,17 +155,17 @@ class TopBar(QWidget):
         else:
             self.live_btn.show()
 
-    def apply_config(self, config):
-        self.config = config
+    def apply_config(self, user_config):
+        self.user_config = user_config
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, config, on_config_change, parent=None):
+    def __init__(self, user_config, on_config_change, parent=None):
         super().__init__(parent)
         self.setWindowTitle("System Settings")
         self.setMinimumSize(540, 260)
 
-        self.config = config
+        self.user_config = user_config
         self.on_config_change = on_config_change
 
         main_layout = QVBoxLayout(self)
@@ -242,11 +241,9 @@ class SettingsDialog(QDialog):
             row_idx += 1
 
         # --- Add sliders ---
-        add_slider("Window (s)", SystemConfig.WINDOW_SEC_BOUNDS, config.window_sec, 1, unit=" s")
-        add_slider("Segment (s)", SystemConfig.SEGMENT_SEC_BOUNDS, config.segment_sec, 10, unit=" s")
-        add_slider("Window Overlap", SystemConfig.WINDOW_OVERLAP_BOUNDS, config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
-        add_slider("Segment Overlap", SystemConfig.SEGMENT_OVERLAP_BOUNDS, config.segment_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
-        add_slider("Max Frequency (Hz)", SystemConfig.MAX_FREQ_HZ_BOUNDS, config.max_freq_hz, 1, unit=" Hz")
+        add_slider("Window (s)", config.WINDOW_SEC_BOUNDS, user_config.window_sec, 1, unit=" s")
+        add_slider("Window Overlap", config.WINDOW_OVERLAP_BOUNDS, user_config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
+        add_slider("Max Frequency (Hz)", config.MAX_FREQ_HZ_BOUNDS, user_config.max_freq_hz, 1, unit=" Hz")
 
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
@@ -284,11 +281,9 @@ class SettingsDialog(QDialog):
             return
 
         mapping = {
-            "Window (s)": SystemConfig.WINDOW_SEC,
-            "Segment (s)": SystemConfig.SEGMENT_SEC,
-            "Window Overlap": SystemConfig.WINDOW_OVERLAP,
-            "Segment Overlap": SystemConfig.SEGMENT_OVERLAP,
-            "Max Frequency (Hz)": SystemConfig.MAX_FREQ_HZ,
+            "Window (s)": config.WINDOW_SEC,
+            "Window Overlap": config.WINDOW_OVERLAP,
+            "Max Frequency (Hz)": config.MAX_FREQ_HZ,
         }
         for name, (slider, scale) in self.sliders.items():
             if name in mapping:
@@ -301,27 +296,12 @@ class SettingsDialog(QDialog):
     def _apply(self):
         try:
             proposed_window_sec = self.sliders["Window (s)"][0].value()
-            proposed_segment_sec = self.sliders["Segment (s)"][0].value() / 10
             proposed_window_overlap = self.sliders["Window Overlap"][0].value() / 100
-            proposed_segment_overlap = self.sliders["Segment Overlap"][0].value() / 100
             proposed_max_freq_hz = self.sliders["Max Frequency (Hz)"][0].value()
 
-            if abs(proposed_segment_sec - float(self.config.segment_sec)) > 1e-9:
-                resp = QMessageBox.question(
-                    self,
-                    "Change Segment Length",
-                    "Changing the segment length will clear the current DSA view/history.\n\nDo you want to proceed?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
-                )
-                if resp != QMessageBox.Yes:
-                    return
-
-            new_config = self.config.update(
+            new_config = self.user_config.update(
                 window_sec=proposed_window_sec,
-                segment_sec=proposed_segment_sec,
                 window_overlap=proposed_window_overlap,
-                segment_overlap=proposed_segment_overlap,
                 max_freq_hz=proposed_max_freq_hz,
             )
             self.on_config_change(new_config)

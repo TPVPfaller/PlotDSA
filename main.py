@@ -18,7 +18,7 @@ from settings_ui import TopBar, SettingsDialog
 from worker import ProcessingWorker
 from views import DSAView, PSDView, EEGView
 
-from config import SystemConfig
+import config
 from PySide6.QtCore import Qt
 
 
@@ -119,13 +119,13 @@ class DSAApplication(QMainWindow):
     def _show_information(self):
         text = f"""
         <p style="font-size:12pt;">
-            - PSD files are saved in: <code>{SystemConfig.BASE_DIR}</code>
+            - PSD files are saved in: <code>{config.BASE_DIR}</code>
         </p>
         <p style="font-size:12pt;">
-            - Viewer supports up to <b>{int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1]/60)} hours</b> of EEG data
+            - Viewer supports up to <b>{int(config.DISPLAY_MINUTES_BOUNDS[1]/60)} hours</b> of EEG data
         </p>
         <p style="font-size:12pt;">
-            - EEG should arrive at <b>{SystemConfig.SAMPLE_RATE_HZ} Hz</b>
+            - EEG should arrive at <b>{config.SAMPLE_RATE_HZ} Hz</b>
         </p>
         <p style="font-size:12pt;">
             - Adjusting segment (s) changes the frequency resolution
@@ -163,11 +163,11 @@ class DSAApplication(QMainWindow):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
-    def _on_new_dsa_column(self, ts, freqs, psd):
-        self.dsa_view.update((ts, freqs, psd))
+    def _on_new_dsa_column(self, ts, psd):
+        self.dsa_view.update((ts, psd))
 
         if self.psd_view.isVisible():
-            self.psd_view.update(freqs, psd)
+            self.psd_view.update(psd)
 
         self._update_status()
 

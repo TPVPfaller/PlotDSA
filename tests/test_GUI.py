@@ -1,11 +1,9 @@
 import pytest
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, QTimer
-from main import DSAApplication, DSAView, PSDView, EEGView, TopBar, SettingsDialog
+from main import DSAApplication, DSAView, PSDView, EEGView, SettingsDialog
 
 import sys
 import time
-import numpy as np
 
 @pytest.fixture(scope="session")
 def app():

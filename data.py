@@ -7,7 +7,7 @@ if getattr(sys, "frozen", False):
 
 from pylsl import StreamInlet, resolve_byprop
 import csv
-from config import SystemConfig
+import config
 import numpy as np
 from calculations import DSACalculator
 import time
@@ -17,24 +17,17 @@ import datetime
 class DSABuffer:
     """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
 
-    Stores PSD columns aligned to a fixed time grid defined by `SystemConfig.TIME_RESOLUTION`.
+    Stores PSD columns aligned to a fixed time grid defined by `config.TIME_RESOLUTION`.
     Read-only methods return windows sized for the current view.
     """
 
-    def __init__(self, segment_sec):
-        self.segment_sec = segment_sec
-        self.max_frames = int(SystemConfig.DISPLAY_MINUTES_BOUNDS[1] * 60 / SystemConfig.TIME_RESOLUTION)
+    def __init__(self):
+        self.max_frames = int(config.DISPLAY_MINUTES_BOUNDS[1] * 60 / config.TIME_RESOLUTION)
         self._reset()
 
-    def append(self, ts, f, psd):
-        if len(f) != len(self.freq_bins):
-            print("Frequency bins do not match. Resetting DSABuffer.")
-            print(f"Expected {len(self.freq_bins)} but got {len(f)}")
-            self._reset()
-            return
-
+    def append(self, ts, psd):
         if psd is None or len(psd) == 0:
-            psd = np.full(len(self.freq_bins), np.nan, dtype=np.float32)
+            psd = np.full(len(config.FREQ_BINS), np.nan, dtype=np.float32)
 
         # Initialize time grid
         if self.t0 is None:
@@ -49,7 +42,7 @@ class DSABuffer:
         if self.last_slot is not None and slot > self.last_slot + 1:
             for s in range(self.last_slot + 1, slot):
                 self.data[s % self.max_frames] = np.nan
-                self.timestamps[s % self.max_frames] = self.t0 + s * SystemConfig.TIME_RESOLUTION
+                self.timestamps[s % self.max_frames] = self.t0 + s * config.TIME_RESOLUTION
 
         # Store data
         self.data[idx] = psd
@@ -63,7 +56,7 @@ class DSABuffer:
         self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
 
     def _timestamp_to_slot(self, ts):
-        return int(np.round((ts - self.t0) / SystemConfig.TIME_RESOLUTION))
+        return int(np.round((ts - self.t0) / config.TIME_RESOLUTION))
 
     def get_oldest_timestamp(self):
         if self.last_slot is None:
@@ -73,7 +66,7 @@ class DSABuffer:
             return self.t0
 
         oldest_slot = self.last_slot - self.max_frames + 1
-        return self.t0 + oldest_slot * SystemConfig.TIME_RESOLUTION
+        return self.t0 + oldest_slot * config.TIME_RESOLUTION
 
     def get_newest_timestamp(self):
         if self.last_slot is None:
@@ -109,7 +102,7 @@ class DSABuffer:
 
         idxs = (np.arange(width) + slot_start) % self.max_frames
 
-        t_start = self.t0 + slot_start * SystemConfig.TIME_RESOLUTION
+        t_start = self.t0 + slot_start * config.TIME_RESOLUTION
         frame = self.data[idxs, :height]
 
         view = self.empty_buffer[:width, :height]
@@ -118,18 +111,8 @@ class DSABuffer:
 
         return float(t_start), view
 
-    def apply_config(self, segment_sec):
-        if self.segment_sec != segment_sec:
-            self.segment_sec = segment_sec
-            self._reset()
-
     def _reset(self):
-        nperseg = int(self.segment_sec * SystemConfig.SAMPLE_RATE_HZ)
-        freq_bins = np.fft.rfftfreq(nperseg, d=1.0 / SystemConfig.SAMPLE_RATE_HZ)
-        mask = (freq_bins >= SystemConfig.LOWEST_FREQ_HZ) & (freq_bins <= SystemConfig.MAX_FREQ_HZ_BOUNDS[1])
-        self.freq_bins = np.arange(0.5, 50.0+0.5, 0.5)
-
-        self.data = np.full((self.max_frames, len(self.freq_bins)), np.nan, dtype=np.float32)
+        self.data = np.full((self.max_frames, len(config.FREQ_BINS)), np.nan, dtype=np.float32)
         self.empty_buffer = np.empty_like(self.data)
         self.empty_buffer[:] = np.nan
 
@@ -147,14 +130,14 @@ class EEGBuffer:
     - Uses DSACalculator to compute a PSD for each full window and advances by `hop_len` samples.
     """
 
-    def __init__(self, window_sec, segment_sec, segment_overlap, overlap):
+    def __init__(self, window_sec, overlap):
         self.window_sec = window_sec
         self.timestamps = []
         self.eeg_values = []
-        self.time_delta = 1000.0 / float(SystemConfig.SAMPLE_RATE_HZ)
+        self.time_delta = 1000.0 / float(config.SAMPLE_RATE_HZ)
         self.last_ts = None
-        self.processor = DSACalculator(window_sec, segment_sec, segment_overlap)
-        self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
+        self.processor = DSACalculator(window_sec)
+        self.window_len = int(window_sec * config.SAMPLE_RATE_HZ)
         self.hop_len = max(1, int(self.window_len * (1.0 - overlap)))
 
     def _get_ts_diff(self, timestamp, value):
@@ -163,7 +146,7 @@ class EEGBuffer:
             return abs((timestamp - expected).total_seconds())
         if value is None or np.isnan(value):
             print(f"Invalid sample: {timestamp}, {value}")
-            return SystemConfig.DSA_TIME_DIFF_TOLERANCE + SystemConfig.EEG_TIME_DIFF_TOLERANCE
+            return config.DSA_TIME_DIFF_TOLERANCE + config.EEG_TIME_DIFF_TOLERANCE
         return 0.0
 
     def get_dsa_columns(self, data):
@@ -176,10 +159,10 @@ class EEGBuffer:
         for ts, eeg in data:
             # continuity check
             diff = self._get_ts_diff(ts, eeg)
-            if diff > SystemConfig.EEG_TIME_DIFF_TOLERANCE:
+            if diff > config.EEG_TIME_DIFF_TOLERANCE:
                 samples.append(np.nan)
                 # We accept a few missing values
-                if diff > SystemConfig.DSA_TIME_DIFF_TOLERANCE:
+                if diff > config.DSA_TIME_DIFF_TOLERANCE:
                     print("Timestamp difference")
                     self.eeg_values.clear()
                     self.timestamps.clear()
@@ -197,9 +180,9 @@ class EEGBuffer:
                 window = np.asarray(self.eeg_values[:self.window_len], dtype=np.float32)
                 window_ts = self.timestamps[self.window_len - 1]
 
-                f, psd = self.processor.compute_psd_column(window)
+                psd = self.processor.compute_psd_column(window)
 
-                output_dsa.append((window_ts.timestamp() - self.window_sec, f, psd))
+                output_dsa.append((window_ts.timestamp() - self.window_sec, psd))
 
                 # SLIDE the window forward
                 del self.eeg_values[:self.hop_len]
@@ -207,13 +190,13 @@ class EEGBuffer:
 
         return output_dsa, samples
 
-    def apply_config(self, window_sec, segment_sec, segment_overlap, overlap):
+    def apply_config(self, window_sec, overlap):
         self.window_sec = window_sec
-        self.window_len = int(window_sec * SystemConfig.SAMPLE_RATE_HZ)
+        self.window_len = int(window_sec * config.SAMPLE_RATE_HZ)
         self.hop_len = int(self.window_len * (1.0 - overlap))
         if self.hop_len < 1:
             self.hop_len = 1
-        self.processor.update_config(window_sec, segment_sec, segment_overlap)
+        self.processor.update_config(window_sec)
 
 
 class EEGStream:
@@ -224,7 +207,7 @@ class EEGStream:
 
     def connect(self):
         try:
-            streams = resolve_byprop("name", "EEG_DATA", timeout=2)
+            streams = resolve_byprop("name", config.LSL_STREAM_NAME, timeout=2)
             if streams:
                 self._inlet = StreamInlet(streams[0])
                 print(f"Connected to: {streams[0].name()} (uid: {streams[0].uid()})")
@@ -244,14 +227,15 @@ class EEGStream:
             sample, _ = self._inlet.pull_sample(timeout=0)
             if sample is None:
                 break
-
             try:
                 timestamp, eeg_str = sample[0].split(",")
+
                 value = float(eeg_str)
                 timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+
                 if not np.isfinite(value):
                     value = np.nan
-                elif value < SystemConfig.EEG_BOUNDS[0] or value > SystemConfig.EEG_BOUNDS[1]:
+                elif value < config.EEG_BOUNDS[0] or value > config.EEG_BOUNDS[1]:
                     print(f"Out of bounds: {value}")
                     value = np.nan
 
@@ -267,28 +251,19 @@ class EEGStream:
 
 class Output:
     @staticmethod
-    def _build_filename(base_dir, freqs, start_time=None):
-        freqs = np.asarray(freqs)
-        if freqs.size < 2:
-            raise ValueError("At least 2 frequency bins required")
-
-        df = round(freqs[1] - freqs[0], 2)
-
+    def _build_filename(base_dir, start_time=None):
         if start_time is None:
             start_time = dt.now()
         else:
             start_time = dt.fromtimestamp(start_time)
         ts = start_time.strftime("%Y-%m-%d")
 
-        filename = f"dsa_{ts}_df{df:.1f}Hz.csv"
+        filename = f"dsa_{ts}Hz.csv"
         return os.path.join(base_dir, filename)
 
     @staticmethod
-    def save_psd_to_csv(timestamp, freqs, psd_db):
-        freqs = np.asarray(freqs).ravel()
+    def save_psd_to_csv(timestamp, psd_db):
         psd_db = np.asarray(psd_db).ravel()
-        if freqs.shape[0] != psd_db.shape[0]:
-            raise ValueError("freqs and psd_db must have the same length")
 
         if timestamp is None:
             ts_str = dt.now().isoformat(timespec="milliseconds")
@@ -299,7 +274,7 @@ class Output:
                 ts_str = dt.fromtimestamp(timestamp).isoformat(timespec="milliseconds")
             else:
                 ts_str = str(timestamp)
-        filepath = Output._build_filename(SystemConfig.BASE_DIR, freqs, timestamp)
+        filepath = Output._build_filename(config.BASE_DIR, timestamp)
         directory = os.path.dirname(filepath)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
@@ -315,7 +290,7 @@ class Output:
                     if header is None:
                         write_header = True
                     else:
-                        expected_cols = 1 + len(freqs)  # timestamp + N frequencies
+                        expected_cols = 1 + len(config.FREQ_BINS)  # timestamp + N frequencies
                         if len(header) != expected_cols:
                             raise ValueError(
                                 f"Existing CSV has {len(header)} columns but expected {expected_cols}. "
@@ -327,7 +302,7 @@ class Output:
         with open(filepath, "a", newline="") as f:
             writer = csv.writer(f)
             if write_header:
-                freq_headers = [f"f_{freq:.2f}_Hz" for freq in freqs]
+                freq_headers = [f"f_{freq:.2f}_Hz" for freq in config.FREQ_BINS]
                 writer.writerow(["timestamp"] + freq_headers)
 
             row_values = [int(np.round(x, 0)) if np.isfinite(x) else "" for x in psd_db]

@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 import math
 from pylsl import StreamInfo, StreamOutlet
-from config import SystemConfig
+import config
 import random
 
 # =========================
@@ -19,7 +19,7 @@ CHANNEL_FORMAT = "string"
 SOURCE_ID = "EEG_DSA_ENTROPY_EMULATOR"
 
 # Set your sample rate here
-SAMPLE_RATE_HZ = SystemConfig.SAMPLE_RATE_HZ
+SAMPLE_RATE_HZ = config.SAMPLE_RATE_HZ
 
 
 def load_csv_column(filepath, i):
@@ -87,7 +87,7 @@ def main():
                             outlet.push_sample([s])
                         samples = []
 
-                print("All samples streamed once. Exiting.")
+                print("All samples streamed.")
 
 
 if __name__ == "__main__":
