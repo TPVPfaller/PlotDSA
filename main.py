@@ -54,12 +54,11 @@ class DSAApplication(QMainWindow):
         self._init_timers()
 
     def _init_ui(self):
-        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change)
-
         self.dsa_view = DSAView(self.user_config, self._on_config_change, self._on_zoom_change)
         self.psd_view = PSDView(self.user_config)
         self.eeg_view = EEGView()
 
+        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan)
         self._create_menu()
 
         container = QWidget()
@@ -120,6 +119,10 @@ class DSAApplication(QMainWindow):
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
 
+        action_clear_data = QAction("Clear Data", self)
+        action_clear_data.triggered.connect(self._confirm_clear_data)
+        view_menu.addAction(action_clear_data)
+
         self.connection_indicator = QLabel("●")
         self.connection_indicator.setAlignment(Qt.AlignCenter)
         self.connection_indicator.setFixedSize(30, 30)
@@ -165,6 +168,18 @@ class DSAApplication(QMainWindow):
         msg.setText(text)
         msg.setIcon(QMessageBox.Information)
         msg.exec()
+
+    def _confirm_clear_data(self):
+        reply = QMessageBox.question(
+            self,
+            "Confirm data deletion",
+            "Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.dsa_view.clear_data()
 
     def _create_toggle_action(self, menu, text, default, widget):
         action = QAction(text, self)
@@ -220,7 +235,7 @@ class DSAApplication(QMainWindow):
     def _on_zoom_change(self, display_minutes):
         self.topbar.sync_slider(display_minutes)
         self.topbar.update_jump_live_btn(self.dsa_view)
-        self.dsa_view.apply_config(self.user_config, display_minutes)
+        self.dsa_view.apply_zoom(display_minutes)
 
     def _on_config_change(self, new_config):
         self.user_config = new_config

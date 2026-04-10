@@ -4,83 +4,86 @@ import numpy as np
 
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
-    QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox, QMessageBox
+    QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox, QMessageBox, QStyle
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 import config
 
-FONT_SIZE = 15
 
+# ------------------ TopBar ------------------ #
 class TopBar(QWidget):
-    def __init__(self, user_config, on_config_change, on_zoom_change):
+    def __init__(self, user_config, on_config_change, on_zoom_change, on_pan):
         super().__init__()
         self.user_config = user_config
         self.on_config_change = on_config_change
         self.on_zoom_change = on_zoom_change
+        self.on_pan = on_pan
+
+        self.GAMMA = 2.5 # Zoom shape parameter
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        layout.setSpacing(10)
+
+        # --- Pan Left Button ---
+        self.left_btn = QPushButton()
+        self.left_btn.setMinimumHeight(40)
+        self.left_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
+        self.left_btn.setToolTip("Pan backward")
+        self.left_btn.clicked.connect(lambda: self._pan(-1))
+        layout.addWidget(self.left_btn)
+
+        # --- Pan Right Button ---
+        self.right_btn = QPushButton()
+        self.right_btn.setMinimumHeight(40)
+        self.right_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
+        self.right_btn.setToolTip("Pan forward")
+        self.right_btn.clicked.connect(lambda: self._pan(1))
+        layout.addWidget(self.right_btn)
 
         # --- Zoom slider ---
         self.zoom_label = QLabel("Zoom:")
-        self.zoom_label.setMinimumHeight(60)
-        self.zoom_label.setStyleSheet(f"font-size: {FONT_SIZE}px;")
+        self.zoom_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         layout.addWidget(self.zoom_label)
 
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
-        self.zoom_slider.setValue(
-            int(config.DISPLAY_MINUTES / config.DISPLAY_MINUTES_BOUNDS[1] * 100)
-        )
-        self.zoom_slider.setFixedHeight(30)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
+
         layout.addWidget(self.zoom_slider)
-        layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
-        layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
 
         # --- Live button ---
         self.live_btn = QPushButton("▶ Live")
-        self.live_btn.setMinimumHeight(60)
-        self.live_btn.setMinimumWidth(100)
+        self.live_btn.setMinimumHeight(40)
+        self.live_btn.setMinimumWidth(90)
         self.live_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: palette(button);
-                color: palette(button-text);
-                border: 1px solid palette(mid);
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-weight: bold;
-                font-size: {FONT_SIZE}px;
+                font-size: {config.FONT_SIZE}px;
             }}
-            QPushButton:hover {{ background-color: palette(midlight); }}
-            QPushButton:pressed {{ background-color: palette(mid); }}
         """)
         policy = self.live_btn.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.live_btn.setSizePolicy(policy)
         self.live_btn.hide()
         layout.addWidget(self.live_btn)
-        layout.setAlignment(self.live_btn, Qt.AlignVCenter)
 
         # --- PSD Normalization Checkbox ---
         self.norm_checkbox = QCheckBox("Relative PSD")
         self.norm_checkbox.setChecked(self.user_config.normalize_psd)
-        self.norm_checkbox.setStyleSheet(f"""
-            QCheckBox {{
-                font-size: {FONT_SIZE}px;
-                spacing: 4px;
-            }}
-            QCheckBox::indicator {{
-                width: 20px;
-                height: 20px;
-            }}
-        """)
+        self.norm_checkbox.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         self.norm_checkbox.toggled.connect(self._normalize_toggled)
         layout.addWidget(self.norm_checkbox)
-        layout.setAlignment(self.norm_checkbox, Qt.AlignBaseline)
+
+    # ------------------ New actions ------------------ #
+    def _pan(self, direction: int):
+        """direction: -1 = left, +1 = right"""
+        step = 0.25 # percent of display width
+        self.on_pan(direction * step)
 
     def _normalize_toggled(self, checked):
         new_config = self.user_config.update(normalize_psd=bool(checked))
@@ -88,16 +91,28 @@ class TopBar(QWidget):
 
     def _zoom_changed(self, value):
         min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS
-        t = 1.0 - ((1.0 - (value - 1) / 99.0) ** 2)
-        new_display_minutes = max_minutes - t * (max_minutes - min_minutes)
-        self.on_zoom_change(new_display_minutes)
+
+        t = (value - 1) / 99.0  # 0..1 linear
+
+        # invert gamma effect for desired behavior
+        t = 1.0 - (1.0 - t) ** self.GAMMA
+
+        display_minutes = max_minutes - t * (max_minutes - min_minutes)
+        self.on_zoom_change(display_minutes)
 
     def sync_slider(self, display_minutes):
-        min_min, max_min = config.DISPLAY_MINUTES_BOUNDS
-        t = (max_min - display_minutes) / (max_min - min_min) if max_min != min_min else 0
-        val_zoom = 1 + 99.0 * (1.0 - np.sqrt(max(0, 1.0 - t)))
+        min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS
+
+        t = (max_minutes - display_minutes) / (max_minutes - min_minutes)
+        t = max(0.0, min(1.0, t))
+
+        # inverse of forward curve
+        t = 1.0 - (1.0 - t) ** (1.0 / self.GAMMA)
+
+        val_zoom = 1 + 99.0 * t
+
         self.zoom_slider.blockSignals(True)
-        self.zoom_slider.setValue(int(np.round(val_zoom)))
+        self.zoom_slider.setValue(int(round(val_zoom)))
         self.zoom_slider.blockSignals(False)
 
     def update_jump_live_btn(self, dsa_view):
@@ -114,7 +129,7 @@ class SettingsDialog(QDialog):
     def __init__(self, user_config, on_config_change, parent=None):
         super().__init__(parent)
         self.setWindowTitle("System Settings")
-        self.setMinimumSize(540, 260)
+        self.setMinimumSize(640, 260)
 
         self.user_config = user_config
         self.on_config_change = on_config_change
@@ -144,7 +159,7 @@ class SettingsDialog(QDialog):
             row_h = 36  # taller for touch
 
             name_label = QLabel(name)
-            name_label.setStyleSheet("font-size: 18px;")
+            name_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
             name_label.setFixedHeight(row_h)
             name_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             name_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
@@ -171,7 +186,7 @@ class SettingsDialog(QDialog):
                 return f"{fmt_number(x)}{unit}"
 
             value_label = QLabel(fmt_with_unit(value * display_factor))
-            value_label.setStyleSheet("font-size: 18px;")
+            value_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
             value_label.setFixedHeight(row_h)
             value_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             value_label.setAlignment(Qt.AlignLeft)
@@ -221,12 +236,12 @@ class SettingsDialog(QDialog):
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
         reset_btn.setMinimumHeight(50)
-        reset_btn.setStyleSheet("font-size: 18px;")
+        reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         reset_btn.clicked.connect(self._reset_to_defaults)
 
         apply_btn = QPushButton("Apply and Close")
         apply_btn.setMinimumHeight(50)
-        apply_btn.setStyleSheet("font-size: 18px;")
+        apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         apply_btn.clicked.connect(self._apply)
 
         button_bar = QWidget()

@@ -25,6 +25,7 @@ BASE_DIR: str = "C:\\temp\\VSCaptureWave"
 LSL_STREAM_NAME: str = "EEG_DATA"
 EEG_VIEW_WINDOW_SEC: float = 4.0
 N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for Welch's method
+FONT_SIZE = 15
 
 # Default values
 WINDOW_SEC: int = 10

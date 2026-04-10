@@ -145,8 +145,26 @@ class DSAView(pg.GraphicsLayoutWidget):
             self._pan_sec = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
             self.update(None, force_update=True)
 
+    def pan(self, delta_percent):
+        """External pan control"""
+        if self.dsa_buffer.t0 is None:
+            return
 
-    #TODO: buttons for sliding
+        if delta_percent == "live":
+            self.jump_to_live()
+            return
+
+        self.live_mode = False
+        self._pan_sec += self.display_minutes * delta_percent * 60
+        self.update(None, force_update=True)
+
+    def clear_data(self):
+        """Delete all buffered data"""
+        self.dsa_buffer = DSABuffer()
+        self.live_mode = True
+        self._pan_sec = 0.0
+        self.update(None, force_update=True)
+
     # ------------------ Mouse & Gesture ------------------ #
     def mousePressEvent(self, ev):
         super().mousePressEvent(ev)
@@ -204,13 +222,11 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.update(None, force_update=True)
         return True
 
-    def apply_config(self, new_config, display_minutes=None):
-        old_config = self.user_config
-        self.user_config = new_config
-        if display_minutes is not None:
+    def apply_zoom(self, new_minutes):
+        if new_minutes is not None:
             old_width = self.display_minutes * 60.0
-            new_width = display_minutes * 60.0
-            self.display_minutes = display_minutes
+            new_width = new_minutes * 60.0
+            self.display_minutes = new_minutes
 
             # keep current center
             center = self._pan_sec + old_width / 2.0
@@ -222,11 +238,17 @@ class DSAView(pg.GraphicsLayoutWidget):
                 max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
                 min_offset = self.dsa_buffer.get_oldest_timestamp()
                 self._pan_sec = max(min_offset, min(self._pan_sec, max_offset))
+        self.update(None, force_update=True)
+
+    def apply_config(self, new_config):
+        old_config = self.user_config
+        self.user_config = new_config
         if new_config.max_freq_hz != old_config.max_freq_hz:
             self.plot.setYRange(config.LOWEST_FREQ_HZ, self.user_config.max_freq_hz, padding=0)
             self.freq_bins = config.FREQ_BINS[(config.FREQ_BINS <= self.user_config.max_freq_hz)]
 
         self.update(None, force_update=True)
+
 
 
 class PSDView(pg.PlotWidget):
