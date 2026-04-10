@@ -5,8 +5,10 @@ EEG Density Spectral Array Viewer
 """
 
 import sys
+import time
+
 sys.argv += ['-platform', 'windows:darkmode=2']
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox, QLabel
 import qdarktheme
 
 from PySide6.QtCore import QThread, QTimer
@@ -93,6 +95,8 @@ class DSAApplication(QMainWindow):
         self.thread.start()
 
     def _init_timers(self):
+        self._last_data_receive_time = time.time()
+
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self._update_status)
         self.status_timer.start(250)
@@ -115,6 +119,22 @@ class DSAApplication(QMainWindow):
         self.action_show_dsa = self._create_toggle_action(view_menu, "Show DSA", True, self.dsa_view)
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
+
+        self.connection_indicator = QLabel("●")
+        self.connection_indicator.setAlignment(Qt.AlignCenter)
+        self.connection_indicator.setFixedSize(30, 30)
+
+        self.connection_indicator.setStyleSheet("""
+            QLabel {
+                color: #6b0000;   /* red = disconnected */
+                font-size: 22px;
+            }
+        """)
+
+        self.connection_indicator.setToolTip("Disconnected")
+
+        # place it in top-right corner of menu bar
+        self.menuBar().setCornerWidget(self.connection_indicator, Qt.TopRightCorner)
 
     def _show_information(self):
         text = f"""
@@ -169,16 +189,32 @@ class DSAApplication(QMainWindow):
         if self.psd_view.isVisible():
             self.psd_view.update(psd)
 
-        self._update_status()
 
     def _on_new_samples(self, samples):
         for value in samples:
             self.eeg_view.append_sample(value)
         if samples:
-            self.topbar.reset_last_data_timer()
+            self._last_data_receive_time = time.time()
+
 
     def _update_status(self):
-        self.topbar.update_indicator()
+        if time.time() - self._last_data_receive_time < 2.0:
+            self.connection_indicator.setStyleSheet("""
+                QLabel {
+                    color: #00c000;
+                    font-size: 22px;
+                }
+            """)
+            self.connection_indicator.setToolTip("Connected")
+        else:
+            self.connection_indicator.setStyleSheet("""
+                QLabel {
+                    color: #6b0000;
+                    font-size: 22px;
+                }
+            """)
+            self.connection_indicator.setToolTip("Disconnected")
+
         self.topbar.update_jump_live_btn(self.dsa_view)
 
     def _on_zoom_change(self, display_minutes):

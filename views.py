@@ -88,7 +88,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.grabGesture(Qt.PinchGesture)
 
 
-    #TODO: delete buffer
+    # TODO: delete buffer
     # ------------------ Update & Rendering ------------------ #
     def update(self, dsa_column, force_update=False):
         if dsa_column is not None:

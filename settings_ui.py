@@ -41,24 +41,6 @@ class TopBar(QWidget):
         layout.setAlignment(self.zoom_label, Qt.AlignVCenter)
         layout.setAlignment(self.zoom_slider, Qt.AlignVCenter)
 
-        # --- Live indicator --- # TODO: smaller
-        self.connection_indicator = QLabel("DISCONNECTED")
-        self.connection_indicator.setStyleSheet(f"""
-            QLabel {{
-                color: white;
-                background-color: #6b0000;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-weight: bold;
-                font-size: {FONT_SIZE}px;
-            }}
-        """)
-        self.connection_indicator.setMinimumHeight(60)
-        self.connection_indicator.setMinimumWidth(140)
-        self.connection_indicator.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.connection_indicator)
-        layout.setAlignment(self.connection_indicator, Qt.AlignVCenter)
-
         # --- Live button ---
         self.live_btn = QPushButton("▶ Live")
         self.live_btn.setMinimumHeight(60)
@@ -83,24 +65,22 @@ class TopBar(QWidget):
         layout.addWidget(self.live_btn)
         layout.setAlignment(self.live_btn, Qt.AlignVCenter)
 
-        self._last_data_receive_time = time.time()
-
         # --- PSD Normalization Checkbox ---
         self.norm_checkbox = QCheckBox("Relative PSD")
         self.norm_checkbox.setChecked(self.user_config.normalize_psd)
-        self.norm_checkbox.setMinimumHeight(70)
         self.norm_checkbox.setStyleSheet(f"""
             QCheckBox {{
-                font-size: {FONT_SIZE}pt;
+                font-size: {FONT_SIZE}px;
+                spacing: 4px;
             }}
             QCheckBox::indicator {{
-                width: 30px;   /* width of the box */
-                height: 30px;  /* height of the box */
+                width: 20px;
+                height: 20px;
             }}
         """)
         self.norm_checkbox.toggled.connect(self._normalize_toggled)
         layout.addWidget(self.norm_checkbox)
-        layout.setAlignment(self.norm_checkbox, Qt.AlignVCenter)
+        layout.setAlignment(self.norm_checkbox, Qt.AlignBaseline)
 
     def _normalize_toggled(self, checked):
         new_config = self.user_config.update(normalize_psd=bool(checked))
@@ -119,35 +99,6 @@ class TopBar(QWidget):
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(np.round(val_zoom)))
         self.zoom_slider.blockSignals(False)
-
-    def reset_last_data_timer(self):
-        self._last_data_receive_time = time.time()
-
-    def update_indicator(self):
-        if time.time() - self._last_data_receive_time < 2.0:
-            self.connection_indicator.setText("CONNECTED")
-            self.connection_indicator.setStyleSheet(f"""
-                QLabel {{
-                    color: white;
-                    background-color: #034003;
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    font-size: {FONT_SIZE}px;
-                }}
-            """)
-        else:
-            self.connection_indicator.setText("DISCONNECTED")
-            self.connection_indicator.setStyleSheet(f"""
-                QLabel {{
-                    color: white;
-                    background-color: #6b0000;
-                    padding: 8px 12px;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    font-size: {FONT_SIZE}px;
-                }}
-            """)
 
     def update_jump_live_btn(self, dsa_view):
         if dsa_view.dsa_buffer.t0 is None or dsa_view.live_mode:
