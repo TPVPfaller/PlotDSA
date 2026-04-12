@@ -3,9 +3,12 @@ from collections import deque
 
 import numpy as np
 import pyqtgraph as pg
-from pyqtgraph import ColorBarItem
+from pyqtgraph import ColorBarItem, GridItem
 from PySide6.QtCore import Qt, QEvent, QTimer
 import time
+
+
+from config import EEG_MM_PER_SECOND
 from data import DSABuffer
 import config
 
@@ -74,7 +77,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def _init_colorbar(self):
         self.colorbar = ColorBarItem(
-            values=(self.user_config.psd_db_min, self.user_config.psd_db_max) if not self.user_config.normalize_psd else (-40, -5),
+            values=(self.user_config.psd_db_min, self.user_config.psd_db_max),
             colorMap=self.cmap,
             label="Power (dB)",
             interactive=False,
@@ -94,6 +97,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         if dsa_column is not None:
             ts, psd = dsa_column
             self.dsa_buffer.append(ts, psd)
+        if time.time() - self._last_render < 1.0 and not force_update:
+            return
         self._last_render = time.time()
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
@@ -114,29 +119,48 @@ class DSAView(pg.GraphicsLayoutWidget):
         )
         data = self.dsa_rect.copy()
         data = np.ascontiguousarray(data) # array is stored in a continuous block of memory
+        np.maximum(data, np.finfo(np.float32).eps, out=data)
+        np.log10(data, out=data)
+        data *= 10
+
         levels = (self.user_config.psd_db_min, self.user_config.psd_db_max)
-        if self.user_config.normalize_psd:
-            data = self._normalize(data)
-            levels = (-40, -5)
         if levels != self._last_levels:
             self.image.setLevels(levels, update=False)
             self.colorbar.setLevels(levels)
             self._last_levels = levels
 
-        np.maximum(data, np.finfo(np.float32).eps, out=data)
-        np.log10(data, out=data)
-        data *= 10
         self.image.setImage(data, nan_policy="omit", autoLevels=False)
         self.image.setRect((self.t0, config.LOWEST_FREQ_HZ, visible_width_sec, self.user_config.max_freq_hz))
         self.plot.setXRange(self.t0, self.t0 + visible_width_sec, padding=0)
 
+    def calibrate(self):
+        visible_width_sec = self.display_minutes * 60.0
+        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
 
-    def _normalize(self, data):
-        col_sums = np.sum(data, axis=1, keepdims=True)
-        col_sums = np.maximum(col_sums, np.finfo(data.dtype).eps)
+        max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
+        min_offset = self.dsa_buffer.get_oldest_timestamp()
 
-        np.divide(data, col_sums, out=data)
-        return data
+        if self.live_mode:
+            self._pan_sec = max_offset
+        else:
+            self._pan_sec = np.clip(self._pan_sec, min_offset, max_offset)
+            if self._pan_sec >= max_offset - 0.05:
+                self.live_mode = True
+                self._pan_sec = max_offset
+
+        _, self.dsa_rect = self.dsa_buffer.get_view_at(
+            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec
+        )
+        data = self.dsa_rect.copy()
+        data = np.ascontiguousarray(data)  # array is stored in a continuous block of memory
+
+        np.maximum(data, np.finfo(np.float32).eps, out=data)
+        np.log10(data, out=data)
+        data *= 10
+        data = data[~np.isnan(data)]
+
+        new_config = self.user_config.update(psd_db_min=int(np.min(data)), psd_db_max=int(np.max(data)))
+        self.on_config_change(new_config)
 
     def jump_to_live(self):
         self.live_mode = True
@@ -268,24 +292,13 @@ class PSDView(pg.PlotWidget):
         self.setYRange(user_config.psd_db_min - 15, user_config.psd_db_max + 15)
 
     def update(self, psd):
-        if self.user_config.normalize_psd:
-            psd = self._normalize(psd)
-            self.setYRange(-55, 10)
-        else:
-            self.setYRange(self.user_config.psd_db_min - 15, self.user_config.psd_db_max + 15)
+        self.setYRange(self.user_config.psd_db_min - 15, self.user_config.psd_db_max + 15)
         psd_db = 10 * np.log10(np.clip(psd, np.finfo(np.float32).eps, None))
         self.curve.setData(config.FREQ_BINS, psd_db)
 
     def apply_config(self, user_config):
         self.user_config = user_config
 
-    def _normalize(self, psd):
-        psd = psd.copy()
-        col_sums = np.sum(psd)
-        col_sums = np.maximum(col_sums, np.finfo(psd.dtype).eps)
-
-        np.divide(psd, col_sums, out=psd)
-        return psd
 
 # 7.5 mm/sekunde 15 mm/sekunde eeg view skalieren mit application window. 5 microvolt pro millimeter. 27 zoll pc. einstellung in system settings
 class EEGView(pg.PlotWidget):
@@ -298,7 +311,18 @@ class EEGView(pg.PlotWidget):
 
         # --- Plot setup ---
         self.setLabel("left", "EEG", units="µV")
-        self.showGrid(x=True, y=True)
+        self.showGrid(x=False, y=False)
+        self.grid = GridItem()
+        self.addItem(self.grid)
+        self.grid.setZValue(-1)
+        self.grid.setTickSpacing(
+            x=[1.0],  # 1 second major grid
+            y=[50.0]  # optional amplitude grid (50 µV for EEG)
+        )
+        self.grid.setTextPen(None)
+        self.getAxis('bottom').setTickPen(None)
+        self.getAxis('left').setTickPen(None)
+
         self.setMenuEnabled(False)
         self.setClipToView(True)
         self.setDownsampling(mode="peak")
@@ -309,12 +333,12 @@ class EEGView(pg.PlotWidget):
             pen=None,
             symbol='o',
             symbolBrush='r',  # fill color red
-            symbolSize=7,  # size
+            symbolSize=3,  # size
             symbolPen=None
         )
 
-        self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=2))
-        self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=2))
+        self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
+        self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
 
         # Sweep line
         self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
@@ -344,13 +368,101 @@ class EEGView(pg.PlotWidget):
 
         # --- View limits ---
         self.setXRange(0, config.EEG_VIEW_WINDOW_SEC, padding=0)
-        self.setYRange(-100, 100, padding=0)
+        self.setYRange(-80, 80, padding=0)
 
         # --- Timer ---
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.PreciseTimer)
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
+
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self._update_time_scale)
+
+    def _update_time_scale(self):
+        win = self.window()
+        if win is None:
+            return
+
+        handle = win.windowHandle()
+        if handle is None:
+            return
+
+        screen = handle.screen()
+        dpi = screen.logicalDotsPerInch() if screen else 96
+
+        px_per_sec = EEG_MM_PER_SECOND * dpi / 25.4
+
+        width_px = self.width()
+        if width_px <= 0:
+            return
+
+        seconds_visible = width_px / px_per_sec
+
+        new_N = int(seconds_visible * config.SAMPLE_RATE_HZ)
+
+        if new_N <= 10:
+            return
+
+        if new_N != self.N:
+            if self.display_head >= 0:
+                # 1. Unroll the existing circular buffer so the most recent sample is at the end.
+                unrolled = np.concatenate([
+                    self.display[self.display_head + 1:],
+                    self.display[:self.display_head + 1]
+                ])
+
+                # 2. Maintain temporal sweep line position (e.g., stay at 50% through the window)
+                old_ratio = (self.display_head + 1) / self.N
+                new_head = int(old_ratio * new_N) - 1
+                new_head = np.clip(new_head, -1, new_N - 1)
+
+                # 3. Create a fresh buffer and map samples relative to the new head.
+                new_display = np.full(new_N, np.nan, dtype=np.float32)
+
+                # How many samples can we carry over?
+                num_to_copy = min(self.N, new_N)
+                samples_to_copy = unrolled[-num_to_copy:]
+
+                # We place samples such that samples_to_copy[-1] lands at new_head.
+                start_idx = new_head - num_to_copy + 1
+                if start_idx >= 0:
+                    new_display[start_idx : new_head + 1] = samples_to_copy
+                else:
+                    # Wraps around the beginning of the circular buffer
+                    # Part 1: Fill from 0 to new_head
+                    new_display[0 : new_head + 1] = samples_to_copy[-(new_head + 1):]
+                    # Part 2: Fill the remainder at the end of the buffer
+                    rem = num_to_copy - (new_head + 1)
+                    new_display[-rem:] = samples_to_copy[:rem]
+
+                self.display_head = new_head
+                self._last_rendered_head = -1
+                self.display = new_display
+            else:
+                self.display = np.full(new_N, np.nan, dtype=np.float32)
+
+            self.N = new_N
+            # Gap size (in samples)
+            self.gap_samples = int(0.05 * self.N)
+
+        self.seconds_visible = seconds_visible
+
+        self.setXRange(0, seconds_visible, padding=0)
+
+        self.x = np.linspace(
+            0,
+            seconds_visible,
+            self.N,
+            endpoint=False,
+            dtype=np.float32,
+        )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_time_scale()
 
     # ------------------------------------------------------------------
     # Data input
@@ -402,7 +514,7 @@ class EEGView(pg.PlotWidget):
             interp_head = float(self.display_head)
 
         # --- Update sweep line ---
-        self.update_line.setPos((interp_head / self.N) * config.EEG_VIEW_WINDOW_SEC)
+        self.update_line.setPos((interp_head / self.N) * self.seconds_visible)
 
         head = int(interp_head) % self.N
 

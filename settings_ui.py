@@ -4,21 +4,23 @@ import numpy as np
 
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
-    QLabel, QGridLayout, QFrame, QSizePolicy, QCheckBox, QMessageBox, QStyle
+    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QStyle
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QIcon
 import config
+from config import PSD_DB_MAX
 
 
 # ------------------ TopBar ------------------ #
 class TopBar(QWidget):
-    def __init__(self, user_config, on_config_change, on_zoom_change, on_pan):
+    def __init__(self, user_config, on_config_change, on_zoom_change, on_pan, on_calibrate):
         super().__init__()
         self.user_config = user_config
         self.on_config_change = on_config_change
         self.on_zoom_change = on_zoom_change
         self.on_pan = on_pan
+        self.on_calibrate = on_calibrate
 
         self.GAMMA = 2.5 # Zoom shape parameter
 
@@ -30,7 +32,6 @@ class TopBar(QWidget):
         self.left_btn = QPushButton()
         self.left_btn.setMinimumHeight(40)
         self.left_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
-        self.left_btn.setToolTip("Pan backward")
         self.left_btn.clicked.connect(lambda: self._pan(-1))
         layout.addWidget(self.left_btn)
 
@@ -38,7 +39,6 @@ class TopBar(QWidget):
         self.right_btn = QPushButton()
         self.right_btn.setMinimumHeight(40)
         self.right_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
-        self.right_btn.setToolTip("Pan forward")
         self.right_btn.clicked.connect(lambda: self._pan(1))
         layout.addWidget(self.right_btn)
 
@@ -57,13 +57,13 @@ class TopBar(QWidget):
         # --- Live button ---
         self.live_btn = QPushButton("▶ Live")
         self.live_btn.setMinimumHeight(40)
-        self.live_btn.setMinimumWidth(90)
+        self.live_btn.setMinimumWidth(70)
         self.live_btn.setStyleSheet(f"""
             QPushButton {{
                 border-radius: 6px;
                 padding: 8px 12px;
-                font-weight: bold;
                 font-size: {config.FONT_SIZE}px;
+                color: white;
             }}
         """)
         policy = self.live_btn.sizePolicy()
@@ -73,21 +73,35 @@ class TopBar(QWidget):
         layout.addWidget(self.live_btn)
 
         # --- PSD Normalization Checkbox ---
-        self.norm_checkbox = QCheckBox("Relative PSD")
-        self.norm_checkbox.setChecked(self.user_config.normalize_psd)
-        self.norm_checkbox.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
-        self.norm_checkbox.toggled.connect(self._normalize_toggled)
-        layout.addWidget(self.norm_checkbox)
+        self.calibrate_btn = QPushButton("Calibrate")
+        self.calibrate_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        font-size: {config.FONT_SIZE}px;
+                        color: white;
+                    }}
+                """)
+        self.calibrate_btn.setMinimumHeight(40)
+        self.calibrate_btn.clicked.connect(self.on_calibrate)
+        layout.addWidget(self.calibrate_btn)
+
+        self.calibrate_btn = QPushButton()
+        self.calibrate_btn.setIcon(QIcon("reset_icon.png"))
+        self.calibrate_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        self.calibrate_btn.setMinimumHeight(40)
+        self.calibrate_btn.clicked.connect(self._reset_calibration)
+        layout.addWidget(self.calibrate_btn)
 
     # ------------------ New actions ------------------ #
+    def _reset_calibration(self):
+        new_config = self.user_config.update(psd_db_min=config.PSD_DB_MIN, psd_db_max=config.PSD_DB_MAX)
+        self.on_config_change(new_config)
+
     def _pan(self, direction: int):
         """direction: -1 = left, +1 = right"""
         step = 0.25 # percent of display width
         self.on_pan(direction * step)
-
-    def _normalize_toggled(self, checked):
-        new_config = self.user_config.update(normalize_psd=bool(checked))
-        self.on_config_change(new_config)
 
     def _zoom_changed(self, value):
         min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS

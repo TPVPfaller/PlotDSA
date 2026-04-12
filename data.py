@@ -1,3 +1,4 @@
+import math
 import os, sys
 
 # fix lsl for single file .exe
@@ -56,7 +57,7 @@ class DSABuffer:
         self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
 
     def _timestamp_to_slot(self, ts):
-        return int(np.round((ts - self.t0) / config.TIME_RESOLUTION))
+        return int(math.floor((ts - self.t0) / config.TIME_RESOLUTION + 0.5))
 
     def get_oldest_timestamp(self):
         if self.last_slot is None:

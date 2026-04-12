@@ -59,8 +59,7 @@ class ProcessingWorker(QObject):
                     # Calculate how many update steps this window covers.
                     # We use ceil to ensure we bridge the gap to the next column's expected timestamp.
                     hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
-                    steps = math.ceil(hop_sec / config.TIME_RESOLUTION)
-
+                    steps = math.ceil(hop_sec / config.TIME_RESOLUTION) + 1
                     # Ensure at least one step is filled
                     steps = max(1, steps)
 

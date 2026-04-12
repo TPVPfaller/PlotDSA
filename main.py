@@ -31,21 +31,6 @@ class DSAApplication(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("EEG Density Spectral Array")
-
-        import tkinter as tk
-
-        root = tk.Tk()
-        width = root.winfo_screenwidth()
-        height = root.winfo_screenheight()
-
-        print("Width:", width)
-        print("Height:", height)
-
-        screen_width_mm = root.winfo_screenmmwidth()
-        screen_height_mm = root.winfo_screenmmheight()
-        print(f"  Größe:     {screen_width_mm} x {screen_height_mm} mm")
-
-        root.destroy()
         self.resize(1000, 650)
 
         self.user_config = UserConfig()
@@ -58,7 +43,7 @@ class DSAApplication(QMainWindow):
         self.psd_view = PSDView(self.user_config)
         self.eeg_view = EEGView()
 
-        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan)
+        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan, self.dsa_view.calibrate)
         self._create_menu()
 
         container = QWidget()
@@ -150,13 +135,6 @@ class DSAApplication(QMainWindow):
         <p style="font-size:12pt;">
             - EEG should arrive at <b>{config.SAMPLE_RATE_HZ} Hz</b>
         </p>
-        <p style="font-size:12pt;">
-            - Adjusting segment (s) changes the frequency resolution
-        </p>
-        <ul style="font-size:12pt;">
-            <li>DSA history will be cleared</li>
-            <li>New PSD data is written to a new CSV file</li>
-        </ul>
         <p style="font-size:12pt;">
             - More info: <a href="https://github.com/TPVPfaller/PlotDSA">GitHub</a>
         </p>

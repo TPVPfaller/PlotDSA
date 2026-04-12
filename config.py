@@ -24,8 +24,10 @@ EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
 BASE_DIR: str = "C:\\temp\\VSCaptureWave"
 LSL_STREAM_NAME: str = "EEG_DATA"
 EEG_VIEW_WINDOW_SEC: float = 4.0
+EEG_MM_PER_SECOND: int = 30
 N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for Welch's method
 FONT_SIZE = 15
+
 
 # Default values
 WINDOW_SEC: int = 10
@@ -34,7 +36,6 @@ DISPLAY_MINUTES: float = 3.0
 MAX_FREQ_HZ: int = 30
 PSD_DB_MIN: int = -25 # TODO: min max manuell oder calibration
 PSD_DB_MAX: int = 20
-NORMALIZE_PSD: bool = False # TODO: Calibrate color scheme
 
 # Bounds (class-level, not instance attributes)
 WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
@@ -63,7 +64,6 @@ class UserConfig:
     max_freq_hz: int = MAX_FREQ_HZ
     psd_db_min: int = PSD_DB_MIN
     psd_db_max: int = PSD_DB_MAX
-    normalize_psd: bool = NORMALIZE_PSD
 
     def __post_init__(self):
         """Validate on creation."""
@@ -80,7 +80,6 @@ class UserConfig:
         self._check_bounds("max_freq_hz", self.max_freq_hz, MAX_FREQ_HZ_BOUNDS)
         self._check_bounds("psd_db_min", self.psd_db_min, PSD_DB_MIN_BOUNDS)
         self._check_bounds("psd_db_max", self.psd_db_max, PSD_DB_MAX_BOUNDS)
-
 
         if self.psd_db_min >= self.psd_db_max:
             raise ValueError(
