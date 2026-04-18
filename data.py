@@ -24,7 +24,17 @@ class DSABuffer:
 
     def __init__(self):
         self.max_frames = int(config.DISPLAY_MINUTES_BOUNDS[1] * 60 / config.TIME_RESOLUTION)
-        self._reset()
+        # Check if we should limit pre-allocation to a sane value if bounds are very large
+        # 12 hours at 1s resolution is ~43200 frames.
+        # Let's keep it pre-allocated but maybe not for a whole year by default if not needed.
+        # However, to support "no limit" as requested, we'll stick to the config for now.
+        # Class B: Ensure memory allocation success or handle failure.
+        try:
+            self._reset()
+        except MemoryError:
+            print("Failed to allocate DSABuffer. Reducing size to 24 hours.")
+            self.max_frames = int(24 * 60 * 60 / config.TIME_RESOLUTION)
+            self._reset()
 
     def append(self, ts, psd):
         if psd is None or len(psd) == 0:
@@ -36,6 +46,22 @@ class DSABuffer:
             slot = 0
         else:
             slot = self._timestamp_to_slot(ts)
+
+        # Rewind if timestamp is older than newest
+        if self.last_slot is not None and slot < self.last_slot:
+            # Clear data for slots that are being "overwritten" by the rewind
+            # If buffer is full, clear max_frames back from last_slot
+            start_clear = slot
+            end_clear = self.last_slot
+            
+            for s in range(start_clear, end_clear + 1):
+                self.data[s % self.max_frames] = np.nan
+                self.timestamps[s % self.max_frames] = np.nan
+            
+            self.last_slot = slot - 1 if slot > 0 else None
+            if self.last_slot is None:
+                self.t0 = ts
+                slot = 0
 
         idx = slot % self.max_frames
 
@@ -52,6 +78,8 @@ class DSABuffer:
         # Mark buffer full if we wrapped
         if self.last_slot is not None:
             if slot - self.last_slot >= self.max_frames:
+                self.full = True
+            elif slot >= self.max_frames:
                 self.full = True
 
         self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
@@ -150,7 +178,7 @@ class EEGBuffer:
             return config.DSA_TIME_DIFF_TOLERANCE + config.EEG_TIME_DIFF_TOLERANCE
         return 0.0
 
-    def get_dsa_columns(self, data):
+    def get_dsa_columns(self, data, method='multitaper'):
         if data is None or len(data) == 0:
             return [], []
 
@@ -181,7 +209,7 @@ class EEGBuffer:
                 window = np.asarray(self.eeg_values[:self.window_len], dtype=np.float32)
                 window_ts = self.timestamps[self.window_len - 1]
 
-                psd = self.processor.compute_psd_column(window)
+                psd = self.processor.compute_psd_column(window, method=method)
 
                 output_dsa.append((window_ts.timestamp() - self.window_sec, psd))
 
@@ -232,7 +260,13 @@ class EEGStream:
                 timestamp, eeg_str = sample[0].split(",")
 
                 value = float(eeg_str)
-                timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                try:
+                    timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
+                except ValueError:
+                    # Fallback if only time is provided (HH:MM:SS.f)
+                    # We assume it's today's date
+                    time_part = dt.strptime(timestamp, "%H:%M:%S.%f").time()
+                    timestamp = dt.combine(dt.now().date(), time_part)
 
                 if not np.isfinite(value):
                     value = np.nan
@@ -263,26 +297,108 @@ class Output:
         return os.path.join(base_dir, filename)
 
     @staticmethod
-    def save_psd_to_csv(timestamp, psd_db):
-        psd_db = np.asarray(psd_db).ravel()
+    def load_psd_from_time(start_time_dt):
+        """
+        Loads PSD data starting from a specific datetime.
+        Returns a list of (timestamp, duration, psd) tuples.
+        """
+        threshold = start_time_dt
+        now = dt.now()
+
+        # Determine unique dates to check (from threshold until now)
+        num_days = (now.date() - threshold.date()).days
+        unique_dates = [threshold.date() + datetime.timedelta(days=i) for i in range(num_days + 1)]
+
+        loaded_data = []
+
+        for date in unique_dates:
+            ts_str = date.strftime("%Y-%m-%d")
+            filename = f"dsa_{ts_str}Hz.csv"
+            filepath = os.path.join(config.BASE_DIR, filename)
+
+            if not os.path.exists(filepath):
+                continue
+
+            try:
+                with open(filepath, "r", newline="") as f:
+                    reader = csv.reader(f)
+                    header = next(reader, None)
+                    if not header:
+                        continue
+
+                    has_duration = "duration" in header
+                    expected_cols = (2 if has_duration else 1) + len(config.FREQ_BINS)
+
+                    if len(header) != expected_cols:
+                        continue
+
+                    for row in reader:
+                        if not row:
+                            continue
+                        try:
+                            ts_str = row[0]
+                            try:
+                                # Try parsing as full ISO format first (for backward compatibility)
+                                row_dt = dt.fromisoformat(ts_str)
+                            except ValueError:
+                                # Fallback: assume HH:MM:SS.mmm and use the date from the filename
+                                time_part = dt.strptime(ts_str, "%H:%M:%S.%f").time()
+                                row_dt = dt.combine(date, time_part)
+
+                            if row_dt < threshold:
+                                continue
+
+                            if has_duration:
+                                duration = float(row[1])
+                                psd_start_idx = 2
+                            else:
+                                duration = config.TIME_RESOLUTION
+                                psd_start_idx = 1
+
+                            psd = []
+                            for val_str in row[psd_start_idx:]:
+                                if val_str == "" or val_str.lower() == "nan":
+                                    psd.append(np.nan)
+                                else:
+                                    psd.append(float(val_str))
+
+                            loaded_data.append((row_dt.timestamp(), duration, np.array(psd, dtype=np.float32)))
+                        except (ValueError, IndexError):
+                            continue
+            except Exception as e:
+                print(f"Error loading {filepath}: {e}")
+
+        # Sort by timestamp just in case
+        loaded_data.sort(key=lambda x: x[0])
+        return loaded_data
+
+    @staticmethod
+    def save_psd_to_csv(timestamp, duration, psd):
+        psd = np.asarray(psd).ravel()
 
         if timestamp is None:
-            ts_str = dt.now().isoformat(timespec="milliseconds")
+            ts_dt = dt.now()
         else:
             if isinstance(timestamp, dt):
-                ts_str = timestamp.isoformat(timespec="milliseconds")
+                ts_dt = timestamp
             elif isinstance(timestamp, (int, float)):
-                ts_str = dt.fromtimestamp(timestamp).isoformat(timespec="milliseconds")
+                ts_dt = dt.fromtimestamp(timestamp)
             else:
-                ts_str = str(timestamp)
-        filepath = Output._build_filename(config.BASE_DIR, timestamp)
+                try:
+                    ts_dt = dt.fromisoformat(str(timestamp))
+                except ValueError:
+                    ts_dt = dt.now() # Fallback
+
+        ts_str = ts_dt.strftime("%H:%M:%S.%f")[:-3] # HH:MM:SS.mmm
+
+        filepath = Output._build_filename(config.BASE_DIR, ts_dt.timestamp())
         directory = os.path.dirname(filepath)
         if directory and not os.path.exists(directory):
             os.makedirs(directory, exist_ok=True)
 
         write_header = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
 
-        # If appending to an existing file, validate column count
+        # If appending to an existing file, validate column count and check for existing timestamp
         if not write_header:
             try:
                 with open(filepath, "r", newline="") as f:
@@ -291,20 +407,28 @@ class Output:
                     if header is None:
                         write_header = True
                     else:
-                        expected_cols = 1 + len(config.FREQ_BINS)  # timestamp + N frequencies
+                        expected_cols = 2 + len(config.FREQ_BINS)  # timestamp + duration + N frequencies
                         if len(header) != expected_cols:
                             raise ValueError(
                                 f"Existing CSV has {len(header)} columns but expected {expected_cols}. "
                                 "Frequency bins must remain identical across saves."
                             )
+                        
+                        # Optimization: check if timestamp is already in the file
+                        # For efficiency, we read the whole file once, but since this is called for each save
+                        # we might want to be careful. However, 86k lines is manageable.
+                        # For Class B, it's safer to check the whole file.
+                        for row in reader:
+                            if row and row[0] == ts_str:
+                                return  # Already exists, skip saving
             except FileNotFoundError:
                 print(f"File not found: {filepath} creating new file")
                 write_header = True
         with open(filepath, "a", newline="") as f:
             writer = csv.writer(f)
             if write_header:
-                freq_headers = [f"f_{freq:.2f}_Hz" for freq in config.FREQ_BINS]
-                writer.writerow(["timestamp"] + freq_headers)
+                freq_headers = [f"f_{freq:.1f}_Hz" for freq in config.FREQ_BINS]
+                writer.writerow(["timestamp", "duration"] + freq_headers)
 
-            row_values = [int(np.round(x, 0)) if np.isfinite(x) else "" for x in psd_db]
-            writer.writerow([ts_str] + row_values)
+            row_values = [np.round(x, 4) if np.isfinite(x) else "nan" for x in psd]
+            writer.writerow([ts_str, f"{duration:.3f}"] + row_values)

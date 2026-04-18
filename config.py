@@ -32,19 +32,20 @@ FONT_SIZE = 15
 # Default values
 WINDOW_SEC: int = 10
 WINDOW_OVERLAP: float = 0.10
-DISPLAY_MINUTES: float = 3.0
+DISPLAY_MINUTES: float = 30.0
 MAX_FREQ_HZ: int = 30
-PSD_DB_MIN: int = -25 # TODO: min max manuell oder calibration
+PSD_DB_MIN: int = -25
 PSD_DB_MAX: int = 20
 
 # Bounds (class-level, not instance attributes)
 WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
 WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
-DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*12.0) # 12 hours of data
+DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*24.0*7) # 1 week limit to avoid 4GB allocation but still plenty
 MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
 PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
 PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
-EEG_BOUNDS: Tuple[int, int] = (-200, 200)
+EEG_BOUNDS: Tuple[int, int] = (-250, 250)
+USE_MULTITAPER: bool = True
 
 _all_freq_bins = np.fft.rfftfreq(N_PER_SEGMENT, d=1 / SAMPLE_RATE_HZ)
 FREQ_MASK = ((_all_freq_bins >= LOWEST_FREQ_HZ) & (_all_freq_bins <= MAX_FREQ_HZ_BOUNDS[1]))
@@ -64,6 +65,7 @@ class UserConfig:
     max_freq_hz: int = MAX_FREQ_HZ
     psd_db_min: int = PSD_DB_MIN
     psd_db_max: int = PSD_DB_MAX
+    use_multitaper: bool = USE_MULTITAPER
 
     def __post_init__(self):
         """Validate on creation."""

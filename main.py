@@ -4,12 +4,15 @@ IEC 62304 – Class B
 EEG Density Spectral Array Viewer
 """
 
+from datetime import datetime as dt
+import datetime
 import sys
 import time
 
 sys.argv += ['-platform', 'windows:darkmode=2']
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox, QLabel
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QMessageBox, QLabel, QDialog, QDateTimeEdit, QPushButton, QFormLayout
 import qdarktheme
+from data import Output
 
 from PySide6.QtCore import QThread, QTimer
 from PySide6.QtGui import QAction
@@ -24,6 +27,26 @@ import config
 from PySide6.QtCore import Qt
 
 
+class TimeSelectionDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select Start Time")
+        self.layout = QFormLayout(self)
+
+        self.date_time_edit = QDateTimeEdit(self)
+        self.date_time_edit.setDateTime(dt.now() - datetime.timedelta(hours=1))
+        self.date_time_edit.setCalendarPopup(True)
+
+        self.layout.addRow("Start Time:", self.date_time_edit)
+
+        self.ok_button = QPushButton("Load", self)
+        self.ok_button.clicked.connect(self.accept)
+        self.layout.addRow(self.ok_button)
+
+    def selected_datetime(self):
+        return self.date_time_edit.dateTime().toPython()
+
+
 class DSAApplication(QMainWindow):
     """Main application wiring together UI, processing thread and views."""
 
@@ -35,6 +58,7 @@ class DSAApplication(QMainWindow):
 
         self.user_config = UserConfig()
         self._init_ui()
+        # self._load_previous_data()  # Removed: Don't load the data at the start only when set in the menu.
         self._init_worker()
         self._init_timers()
 
@@ -67,6 +91,36 @@ class DSAApplication(QMainWindow):
         self.topbar.sync_slider(self.user_config.display_minutes)
         pg.setConfigOptions(antialias=False)
 
+    def _on_load_data_clicked(self):
+        dialog = TimeSelectionDialog(self)
+        if dialog.exec():
+            start_time = dialog.selected_datetime()
+            self._load_data_from_time(start_time)
+
+    def _load_data_from_time(self, start_time_dt):
+        # Clear current data first
+        self.dsa_view.clear_data()
+
+        # Load data from specific time
+        try:
+            previous_data = Output.load_psd_from_time(start_time_dt)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Error", f"Failed to load data: {e}")
+            return
+
+        if not previous_data:
+            QMessageBox.information(self, "Load Data", "No data found for the selected time range.")
+            return
+
+        for ts, duration, psd in previous_data:
+            steps = int(duration / config.TIME_RESOLUTION)
+            for i in range(steps):
+                self.dsa_view.update((ts + i * config.TIME_RESOLUTION, psd))
+
+        self.dsa_view.update(None, force_update=True)
+        self.dsa_view.jump_to_live()
+
+
     def _init_worker(self):
         self.thread = QThread()
         self.worker = ProcessingWorker(self.user_config)
@@ -88,7 +142,13 @@ class DSAApplication(QMainWindow):
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
 
-        action_settings = QAction("System Settings...", self)
+        action_load_data = QAction("Load Data from Time...", self)
+        action_load_data.triggered.connect(self._on_load_data_clicked)
+        menu.addAction(action_load_data)
+
+        menu.addSeparator()
+
+        action_settings = QAction("DSA Settings...", self)
         action_settings.setShortcut("Ctrl+,")
         action_settings.triggered.connect(self._open_settings)
         menu.addAction(action_settings)
@@ -98,18 +158,28 @@ class DSAApplication(QMainWindow):
         action_info.triggered.connect(self._show_information)
         menu.addAction(action_info)
 
+        menu.addSeparator()
+
+        self.action_multitaper = QAction("Use Multitaper", self)
+        self.action_multitaper.setCheckable(True)
+        self.action_multitaper.setChecked(self.user_config.use_multitaper)
+        self.action_multitaper.toggled.connect(self._toggle_multitaper)
+        menu.addAction(self.action_multitaper)
+
         view_menu = self.menuBar().addMenu("&View")
 
         self.action_show_dsa = self._create_toggle_action(view_menu, "Show DSA", True, self.dsa_view)
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
 
+
+
         action_clear_data = QAction("Clear Data", self)
         action_clear_data.triggered.connect(self._confirm_clear_data)
         view_menu.addAction(action_clear_data)
 
         self.connection_indicator = QLabel("●")
-        self.connection_indicator.setAlignment(Qt.AlignCenter)
+        self.connection_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.connection_indicator.setFixedSize(30, 30)
 
         self.connection_indicator.setStyleSheet("""
@@ -122,7 +192,7 @@ class DSAApplication(QMainWindow):
         self.connection_indicator.setToolTip("Disconnected")
 
         # place it in top-right corner of menu bar
-        self.menuBar().setCornerWidget(self.connection_indicator, Qt.TopRightCorner)
+        self.menuBar().setCornerWidget(self.connection_indicator, Qt.Corner.TopRightCorner)
 
     def _show_information(self):
         text = f"""
@@ -140,24 +210,28 @@ class DSAApplication(QMainWindow):
         </p>
         """
 
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Information")
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(text)
-        msg.setIcon(QMessageBox.Information)
-        msg.exec()
+        QMessageBox.information(
+            self,
+            "Information",
+            text,
+            QMessageBox.StandardButton.Ok
+        )
 
     def _confirm_clear_data(self):
         reply = QMessageBox.question(
             self,
             "Confirm data deletion",
             "Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.dsa_view.clear_data()
+
+    def _toggle_multitaper(self, checked):
+        new_config = self.user_config.update(use_multitaper=checked)
+        self._on_config_change(new_config)
 
     def _create_toggle_action(self, menu, text, default, widget):
         action = QAction(text, self)
@@ -217,6 +291,11 @@ class DSAApplication(QMainWindow):
 
     def _on_config_change(self, new_config):
         self.user_config = new_config
+
+        if hasattr(self, 'action_multitaper'):
+            self.action_multitaper.blockSignals(True)
+            self.action_multitaper.setChecked(new_config.use_multitaper)
+            self.action_multitaper.blockSignals(False)
 
         self.topbar.apply_config(new_config)
         self.worker.apply_config(new_config)

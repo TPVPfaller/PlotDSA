@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.signal import welch, firwin, lfilter
+from scipy.signal.windows import dpss
 import config
+
 
 class DSACalculator:
     """Computes PSD columns for DSA using Welch's method (Defender-safe)."""
@@ -9,23 +11,29 @@ class DSACalculator:
         self.window_sec = window_sec
 
         self.notch_freq = 50.0  # line noise
-        self.notch_bw_hz = 1.0  # bandwidth for simple notch FIR
 
         self._precompute_filters()
 
     def _precompute_filters(self):
-        # FIR bandpass design
-        numtaps = 101  # filter length
-        nyq = 0.5 * config.SAMPLE_RATE_HZ
-        low = config.LOWEST_FREQ_HZ / nyq
-        high = config.MAX_FREQ_HZ_BOUNDS[1] / nyq
-        self.bp_b = firwin(numtaps, [low, high], pass_zero=False)
-        self.bp_a = [1.0]  # FIR denominator
+        fs = config.SAMPLE_RATE_HZ
 
-        # Simple FIR notch filter approximation (high attenuation at 50Hz)
-        notch_low = (self.notch_freq - self.notch_bw_hz/2) / nyq
-        notch_high = (self.notch_freq + self.notch_bw_hz/2) / nyq
-        self.notch_b = firwin(numtaps, [notch_low, notch_high], pass_zero=True)
+        self.bp_b = firwin(
+            numtaps=101,
+            cutoff=[config.LOWEST_FREQ_HZ, config.MAX_FREQ_HZ_BOUNDS[1]],
+            fs=fs,
+            pass_zero=False,
+            window='hamming'
+        )
+
+        self.notch_b = firwin(
+            numtaps=201,
+            cutoff=[48.5, 51.5],
+            fs=fs,
+            pass_zero=True,
+            window='hamming'
+        )
+
+        self.bp_a = [1.0]
         self.notch_a = [1.0]
 
     def _apply_filters(self, data):
@@ -34,7 +42,48 @@ class DSACalculator:
         filtered = lfilter(self.bp_b, self.bp_a, filtered)
         return filtered
 
-    def compute_psd_column(self, eeg_values):
+    def multitaper_method(self, eeg_values):
+        """
+        Multitaper PSD estimation.
+        """
+        TW = 1
+        K = 3  # number of tapers
+        nw = config.N_PER_SEGMENT # number of samples per window
+        N = len(eeg_values)//config.N_PER_SEGMENT # number of windows
+
+        eeg_values = eeg_values[:(N * nw)] # cut off extra samples
+        eeg_values = np.reshape(eeg_values, (N, nw)) # reshape to (N, nw)
+        
+        fs = config.SAMPLE_RATE_HZ
+
+        # Generate DPSS tapers
+        tapers, eigvals = dpss(nw, NW=TW, Kmax=K, sym=True, return_ratios=True) # (K, nw)
+        
+        spect = np.zeros((N, nw//2+1)) # N//2+1 because fft output is Hermitian-symmetric
+
+        # iterate over windows
+        for i in range(N):
+            # Apply tapers to the current window
+            # tapers is (K, nw), eeg_values[i] is (nw,)
+            window_data = eeg_values[i]
+            tapered_data = tapers * window_data # Broadcasting (K, nw) * (nw,) -> (K, nw)
+            
+            fourier = np.fft.rfft(tapered_data, n=nw, axis=1) # (K, nw//2+1)
+            
+            # Power per taper
+            power = (np.abs(fourier) ** 2) / fs 
+            
+            # For rfft, we need to double the power for all bins except DC and Nyquist if we want one-sided PSD
+            power[:, 1:-1] *= 2
+            
+            # Average across tapers
+            spect[i] = np.mean(power, axis=0)
+            
+        # Average across windows
+        return np.mean(spect, axis=0)
+
+
+    def compute_psd_column(self, eeg_values, method='multitaper'):
         min_samples = int(self.window_sec * config.SAMPLE_RATE_HZ)
         if len(eeg_values) < min_samples:
             return None, None
@@ -42,16 +91,18 @@ class DSACalculator:
         # Apply FIR filters
         filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
 
-        # 5 seconds window, max 10%-20% overlap
-
-        _, psd = welch(
-            filtered,
-            fs=config.SAMPLE_RATE_HZ,
-            nperseg=config.N_PER_SEGMENT,
-            noverlap=None,
-            return_onesided=True
-        )
-
+        if method == 'multitaper':
+            psd = self.multitaper_method(filtered)
+            if psd is None:
+                return np.full(len(config.FREQ_BINS), np.nan, np.float32)
+        else:
+            _, psd = welch(
+                filtered,
+                fs=config.SAMPLE_RATE_HZ,
+                nperseg=config.N_PER_SEGMENT,
+                noverlap=None, # TODO: If None then overlap is 50%
+                return_onesided=True
+            )
         psd = psd[config.FREQ_MASK]
 
         if not np.all(psd):

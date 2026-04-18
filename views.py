@@ -91,13 +91,12 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.grabGesture(Qt.PinchGesture)
 
 
-    # TODO: delete buffer
     # ------------------ Update & Rendering ------------------ #
     def update(self, dsa_column, force_update=False):
         if dsa_column is not None:
             ts, psd = dsa_column
             self.dsa_buffer.append(ts, psd)
-        if time.time() - self._last_render < 1.0 and not force_update:
+        if time.time() - self._last_render < 0.5 and not force_update:
             return
         self._last_render = time.time()
         visible_width_sec = self.display_minutes * 60.0
@@ -158,9 +157,15 @@ class DSAView(pg.GraphicsLayoutWidget):
         np.log10(data, out=data)
         data *= 10
         data = data[~np.isnan(data)]
-
-        new_config = self.user_config.update(psd_db_min=int(np.min(data)), psd_db_max=int(np.max(data)))
-        self.on_config_change(new_config)
+        if len(data) > 0:
+            data.sort()
+            n_1_percent = max(1, int(len(data) * 0.001))
+            psd_db_min = np.mean(data[:n_1_percent])
+            psd_db_max = np.mean(data[-n_1_percent:])
+            psd_db_min = np.clip(int(psd_db_min), config.PSD_DB_MIN_BOUNDS[0], config.PSD_DB_MIN_BOUNDS[1])
+            psd_db_max = np.clip(int(psd_db_max), config.PSD_DB_MAX_BOUNDS[0], config.PSD_DB_MAX_BOUNDS[1])
+            new_config = self.user_config.update(psd_db_min=psd_db_min, psd_db_max=psd_db_max)
+            self.on_config_change(new_config)
 
     def jump_to_live(self):
         self.live_mode = True

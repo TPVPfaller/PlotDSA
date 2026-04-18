@@ -33,46 +33,48 @@ class ProcessingWorker(QObject):
     def run(self):
         next_time = time.time()
         while self.running:
-            try:
-                if self._new_config:
-                    self.user_config = self._new_config
-                    self._new_config = None
-                    self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
-                if not self.stream.receiving:
-                    self.stream.connect()
-                    # Emit on change
-                    if self.stream.receiving != self._last_connection_state:
-                        self._last_connection_state = self.stream.receiving
-                    time.sleep(0.5)
+
+            if self._new_config:
+                self.user_config = self._new_config
+                self._new_config = None
+                self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
+            if not self.stream.receiving:
+                self.stream.connect()
+                # Emit on change
+                if self.stream.receiving != self._last_connection_state:
+                    self._last_connection_state = self.stream.receiving
+                time.sleep(0.5)
+                continue
+
+            samples = self.stream.read_samples()
+            method = 'multitaper' if self.user_config.use_multitaper else 'welch'
+            dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples, method=method)
+
+            if checked_samples:
+                self.new_samples.emit(checked_samples)
+
+            for ts, psd in dsa_columns:
+                if psd is None:
                     continue
 
-                samples = self.stream.read_samples()
-                dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples)
+                # Calculate how many update steps this window covers.
+                # We use ceil to ensure we bridge the gap to the next column's expected timestamp.
+                hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
+                steps = math.ceil(hop_sec / config.TIME_RESOLUTION) + 1
+                # Ensure at least one step is filled
+                steps = max(1, steps)
 
-                if checked_samples:
-                    self.new_samples.emit(checked_samples)
+                duration = steps * config.TIME_RESOLUTION
 
-                for ts, psd in dsa_columns:
-                    if psd is None:
-                        continue
+                for i in range(steps):
+                    self.new_dsa_column.emit(ts + i * config.TIME_RESOLUTION, psd)
 
-                    # Calculate how many update steps this window covers.
-                    # We use ceil to ensure we bridge the gap to the next column's expected timestamp.
-                    hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
-                    steps = math.ceil(hop_sec / config.TIME_RESOLUTION) + 1
-                    # Ensure at least one step is filled
-                    steps = max(1, steps)
+                self._io_executor.submit(Output.save_psd_to_csv, ts, duration, psd)
 
-                    for i in range(steps):
-                        self.new_dsa_column.emit(ts + i * config.TIME_RESOLUTION, psd)
+            next_time += config.TIME_RESOLUTION
+            sleep = max(0.0, next_time - time.time())
+            time.sleep(sleep)
 
-                    self._io_executor.submit(Output.save_psd_to_csv, ts, psd)
-
-                next_time += config.TIME_RESOLUTION
-                sleep = max(0.0, next_time - time.time())
-                time.sleep(sleep)
-            except Exception as e:
-                print("Worker error:", e)
 
 
     def stop(self):
