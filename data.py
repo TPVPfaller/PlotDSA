@@ -16,140 +16,213 @@ from datetime import datetime as dt
 import datetime
 
 class DSABuffer:
-    """Ring buffer for DSA frames (time x frequency) with gap-filling and wrap-around.
+    """Multi-resolution Ring buffer for DSA frames.
 
-    Stores PSD columns aligned to a fixed time grid defined by `config.TIME_RESOLUTION`.
-    Read-only methods return windows sized for the current view.
+    Stores PSD columns aligned to a fixed time grid at multiple resolutions
+    to improve performance when viewing large time ranges.
     """
 
+    RESOLUTIONS = [1, 10, 60, 300]  # seconds per frame
+
     def __init__(self):
-        self.max_frames = int(config.DISPLAY_MINUTES_BOUNDS[1] * 60 / config.TIME_RESOLUTION)
-        # Check if we should limit pre-allocation to a sane value if bounds are very large
-        # 12 hours at 1s resolution is ~43200 frames.
-        # Let's keep it pre-allocated but maybe not for a whole year by default if not needed.
-        # However, to support "no limit" as requested, we'll stick to the config for now.
-        # Class B: Ensure memory allocation success or handle failure.
+        self.max_minutes = config.DISPLAY_MINUTES_BOUNDS[1]
+        self.n_freqs = len(config.FREQ_BINS)
+        
+        # We'll use a dictionary to store buffers for each resolution
+        self.buffers = {}
+        # Each level will have: data, timestamps, last_slot, full, max_frames
+        
         try:
             self._reset()
         except MemoryError:
-            print("Failed to allocate DSABuffer. Reducing size to 24 hours.")
-            self.max_frames = int(24 * 60 * 60 / config.TIME_RESOLUTION)
+            print("Failed to allocate DSABuffer. Reducing size.")
+            self.max_minutes = 24 * 60  # 24 hours fallback
             self._reset()
+
+    def _reset(self):
+        self.buffers = {}
+        self.t0 = None
+
+        for res in self.RESOLUTIONS:
+            max_frames = int(self.max_minutes * 60 / res)
+            self.buffers[res] = {
+                'data': np.full((max_frames, self.n_freqs), np.nan, dtype=np.float32),
+                'timestamps': np.full(max_frames, np.nan, dtype=np.float64),
+                'last_slot': None,
+                'full': False,
+                'max_frames': max_frames,
+                'counts': np.zeros(max_frames, dtype=np.int32)
+            }
 
     def append(self, ts, psd):
         if psd is None or len(psd) == 0:
-            psd = np.full(len(config.FREQ_BINS), np.nan, dtype=np.float32)
+            psd = np.full(self.n_freqs, np.nan, dtype=np.float32)
 
-        # Initialize time grid
         if self.t0 is None:
             self.t0 = ts
-            slot = 0
-        else:
-            slot = self._timestamp_to_slot(ts)
 
-        # Rewind if timestamp is older than newest
-        if self.last_slot is not None and slot < self.last_slot:
-            # Clear data for slots that are being "overwritten" by the rewind
-            # If buffer is full, clear max_frames back from last_slot
-            start_clear = slot
-            end_clear = self.last_slot
+        # Update base resolution (Level 0: 1s)
+        self._append_to_res(1, ts, psd)
+
+        # Update higher resolutions
+        # We can either use a sliding average or just average non-overlapping blocks.
+        # Given the "slot" nature, non-overlapping blocks aligned to t0 is easier and consistent.
+        for res in self.RESOLUTIONS:
+            if res == 1:
+                continue
             
-            for s in range(start_clear, end_clear + 1):
-                self.data[s % self.max_frames] = np.nan
-                self.timestamps[s % self.max_frames] = np.nan
+            # For higher resolutions, we want to average the base data.
+            # However, append() is called with 1s data. 
+            # We can use an accumulator for each resolution.
+            buf = self.buffers[res]
+            slot = int(math.floor((ts - self.t0) / res))
             
-            self.last_slot = slot - 1 if slot > 0 else None
-            if self.last_slot is None:
+            if buf['last_slot'] is not None and slot < buf['last_slot']:
+                # Rewind detected, clear higher res too
+                self._clear_from_slot(res, slot)
+            
+            # Simple approach: average every 'res' samples from the 1s resolution.
+            # But append might not be called every second or might be called out of order.
+            # For simplicity and robust Class B behavior, let's just use the slot 
+            # and update the slot value (e.g. running average or just overwrite)
+            # Actually, to be accurate, Level N should be the mean of Level 0 frames.
+            # For now, let's do a simple update:
+            self._update_higher_res(res, ts, psd)
+
+    def _append_to_res(self, res, ts, psd):
+        buf = self.buffers[res]
+        slot = int(math.floor((ts - self.t0) / res + 0.5))
+        max_f = buf['max_frames']
+
+        if buf['last_slot'] is not None and slot < buf['last_slot']:
+            self._clear_from_slot(res, slot)
+            buf['last_slot'] = slot - 1 if slot > 0 else None
+            if res == 1 and buf['last_slot'] is None:
                 self.t0 = ts
                 slot = 0
 
-        idx = slot % self.max_frames
+        idx = slot % max_f
 
         # Fill gaps with NaNs
-        if self.last_slot is not None and slot > self.last_slot + 1:
-            for s in range(self.last_slot + 1, slot):
-                self.data[s % self.max_frames] = np.nan
-                self.timestamps[s % self.max_frames] = self.t0 + s * config.TIME_RESOLUTION
+        if buf['last_slot'] is not None and slot > buf['last_slot'] + 1:
+            for s in range(buf['last_slot'] + 1, slot):
+                buf['data'][s % max_f] = np.nan
+                buf['timestamps'][s % max_f] = self.t0 + s * res
 
-        # Store data
-        self.data[idx] = psd
-        self.timestamps[idx] = ts
+        buf['data'][idx] = psd
+        buf['timestamps'][idx] = ts
 
-        # Mark buffer full if we wrapped
-        if self.last_slot is not None:
-            if slot - self.last_slot >= self.max_frames:
-                self.full = True
-            elif slot >= self.max_frames:
-                self.full = True
+        if buf['last_slot'] is not None:
+            if slot - buf['last_slot'] >= max_f or slot >= max_f:
+                buf['full'] = True
+        
+        buf['last_slot'] = max(buf['last_slot'], slot) if buf['last_slot'] is not None else slot
 
-        self.last_slot = max(self.last_slot, slot) if self.last_slot is not None else slot
+    def _update_higher_res(self, res, ts, psd):
+        buf = self.buffers[res]
+        slot = int(math.floor((ts - self.t0) / res))
+        max_f = buf['max_frames']
+        idx = slot % max_f
 
-    def _timestamp_to_slot(self, ts):
-        return int(math.floor((ts - self.t0) / config.TIME_RESOLUTION + 0.5))
+        if buf['last_slot'] is not None and slot > buf['last_slot']:
+             # New slot in higher res, initialize it
+             buf['data'][idx] = psd
+             buf['timestamps'][idx] = self.t0 + slot * res
+             buf['last_slot'] = slot
+             buf['counts'][idx] = 1
+             if slot >= max_f:
+                 buf['full'] = True
+        elif buf['last_slot'] == slot:
+            # Update existing slot (running mean)
+            count = buf['counts'][idx]
+            existing = buf['data'][idx]
+            if np.isnan(existing).all():
+                buf['data'][idx] = psd
+                buf['counts'][idx] = 1
+            else:
+                # Welford's algorithm or simple incremental mean
+                buf['data'][idx] = existing + (psd - existing) / (count + 1)
+                buf['counts'][idx] = count + 1
+        else:
+            # Older slot, just ignore or update?
+            if buf['last_slot'] is None or (buf['full'] and slot > buf['last_slot'] - max_f) or (not buf['full'] and slot >= 0):
+                buf['data'][idx] = psd
+                buf['timestamps'][idx] = self.t0 + slot * res
+                buf['counts'][idx] = 1
+                if buf['last_slot'] is None:
+                    buf['last_slot'] = slot
+
+    def _clear_from_slot(self, res, slot):
+        buf = self.buffers[res]
+        max_f = buf['max_frames']
+        if buf['last_slot'] is None: return
+        
+        start_clear = slot
+        end_clear = buf['last_slot']
+        for s in range(start_clear, end_clear + 1):
+            buf['data'][s % max_f] = np.nan
+            buf['timestamps'][s % max_f] = np.nan
+            buf['counts'][s % max_f] = 0
+
+    def apply_config(self, display_minutes):
+        """Update buffer configuration and reset data."""
+        self.max_minutes = display_minutes
+        self._reset()
 
     def get_oldest_timestamp(self):
-        if self.last_slot is None:
+        buf = self.buffers[1]
+        if buf['last_slot'] is None:
             return time.time()
-
-        if not self.full:
+        if not buf['full']:
             return self.t0
-
-        oldest_slot = self.last_slot - self.max_frames + 1
-        return self.t0 + oldest_slot * config.TIME_RESOLUTION
+        return self.t0 + (buf['last_slot'] - buf['max_frames'] + 1) * 1.0
 
     def get_newest_timestamp(self):
-        if self.last_slot is None:
+        buf = self.buffers[1]
+        if buf['last_slot'] is None:
             return time.time()
-        return self.timestamps[self.last_slot % self.max_frames]
+        return buf['timestamps'][buf['last_slot'] % buf['max_frames']]
 
-    def get_view_at(self, width, height, pan_sec):
-        """Return a frame starting at pan_sec."""
+    def get_view_at(self, width, height, pan_sec, target_resolution=None):
+        """Return a frame starting at pan_sec with optimal resolution."""
         if self.t0 is None:
-            return time.time(), np.full((width, height), np.nan, dtype=np.float32)
+            return float(time.time()), np.full((width, height), np.nan, dtype=np.float32), 1
 
-        height = min(height, self.data.shape[1])
-        width = min(width, self.max_frames)
+        # Select resolution
+        res = 1
+        if target_resolution is not None:
+            # Find closest available resolution
+            res = min(self.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
 
-        # Convert pan offset to slot index
-        slot_start = self._timestamp_to_slot(pan_sec)
-        slot_end = slot_start + width - 1
+        buf = self.buffers[res]
+        max_f = buf['max_frames']
 
-        # Clamp to available data
-        if self.last_slot is not None:
-            # We cannot show slots beyond last_slot
-            if slot_end > self.last_slot:
-                slot_end = self.last_slot
-                slot_start = max(0, slot_end - width + 1)
+        effective_width = max(1, int(width / res))
+        
+        slot_start = int(math.floor((pan_sec - self.t0) / res))
+        slot_end = slot_start + effective_width - 1
 
-            # If buffer is not full, we cannot show slots before 0
-            if not self.full:
+        if buf['last_slot'] is not None:
+            if slot_end > buf['last_slot']:
+                slot_end = buf['last_slot']
+                slot_start = max(0, slot_end - effective_width + 1)
+            
+            if not buf['full']:
                 slot_start = max(0, slot_start)
             else:
-                # If buffer is full, we can show up to max_frames back from last_slot
-                min_available_slot = self.last_slot - self.max_frames + 1
-                slot_start = max(min_available_slot, slot_start)
+                min_available = buf['last_slot'] - max_f + 1
+                slot_start = max(min_available, slot_start)
+        
+        actual_width = slot_end - slot_start + 1
+        if actual_width <= 0:
+            return pan_sec, np.full((1, height), np.nan, dtype=np.float32), 1
 
-        idxs = (np.arange(width) + slot_start) % self.max_frames
-
-        t_start = self.t0 + slot_start * config.TIME_RESOLUTION
-        frame = self.data[idxs, :height]
-
-        view = self.empty_buffer[:width, :height]
-        view[:] = np.nan
-        view[:len(frame)] = frame
-
-        return float(t_start), view
-
-    def _reset(self):
-        self.data = np.full((self.max_frames, len(config.FREQ_BINS)), np.nan, dtype=np.float32)
-        self.empty_buffer = np.empty_like(self.data)
-        self.empty_buffer[:] = np.nan
-
-        self.timestamps = np.full(self.max_frames, np.nan)
-
-        self.t0 = None
-        self.last_slot = None
-        self.full = False
+        idxs = (np.arange(actual_width) + slot_start) % max_f
+        t_start = self.t0 + slot_start * res
+        
+        frame = buf['data'][idxs, :height]
+        
+        return float(t_start), frame, res
 
 
 class EEGBuffer:

@@ -142,21 +142,16 @@ class DSAApplication(QMainWindow):
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
 
-        action_load_data = QAction("Load Data from Time...", self)
-        action_load_data.triggered.connect(self._on_load_data_clicked)
-        menu.addAction(action_load_data)
-
         menu.addSeparator()
 
-        action_settings = QAction("DSA Settings...", self)
+        action_settings = QAction("Settings", self)
         action_settings.setShortcut("Ctrl+,")
         action_settings.triggered.connect(self._open_settings)
         menu.addAction(action_settings)
 
-        action_info = QAction("Information", self)
-        action_info.setShortcut("Ctrl+H")
-        action_info.triggered.connect(self._show_information)
-        menu.addAction(action_info)
+        action_load_data = QAction("Load Data from Time...", self)
+        action_load_data.triggered.connect(self._on_load_data_clicked)
+        menu.addAction(action_load_data)
 
         menu.addSeparator()
 
@@ -172,11 +167,15 @@ class DSAApplication(QMainWindow):
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
 
-
-
         action_clear_data = QAction("Clear Data", self)
         action_clear_data.triggered.connect(self._confirm_clear_data)
         view_menu.addAction(action_clear_data)
+
+        help_menu = self.menuBar().addMenu("&Help")
+        action_info = QAction("Information", self)
+        action_info.setShortcut("Ctrl+H")
+        action_info.triggered.connect(self._show_information)
+        help_menu.addAction(action_info)
 
         self.connection_indicator = QLabel("●")
         self.connection_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)

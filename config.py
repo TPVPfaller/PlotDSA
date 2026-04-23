@@ -40,7 +40,7 @@ PSD_DB_MAX: int = 20
 # Bounds (class-level, not instance attributes)
 WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
 WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
-DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*24.0*7) # 1 week limit to avoid 4GB allocation but still plenty
+DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*24.0*31) # 1 week limit to avoid 4GB allocation but still plenty
 MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
 PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
 PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)

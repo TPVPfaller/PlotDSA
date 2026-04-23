@@ -58,11 +58,13 @@ def main():
     # Deterministic timestamping
     ts = datetime.now()
     while True:
-        for i in range(1, 9):
+        for i in range(1, 11):
             if i == 8:
                 continue
             for j in range(1, 11):
                 filepath = os.path.join(DATA_DIR, f"JSMF_00{i}_filtered_emergence.csv")
+                if i == 10:
+                    filepath = os.path.join(DATA_DIR, f"JSMF_0{i}_filtered_emergence.csv")
                 if not os.path.exists(filepath):
                     raise FileNotFoundError(f"CSV file not found: {filepath}")
 
@@ -82,7 +84,7 @@ def main():
 
                     # Push to LSL
                     if idx % SAMPLE_RATE_HZ == 0:
-                        time.sleep(0.1)
+                        time.sleep(0.005)
                         for s in samples:
                             outlet.push_sample([s])
                         samples = []

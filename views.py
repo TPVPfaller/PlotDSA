@@ -102,6 +102,11 @@ class DSAView(pg.GraphicsLayoutWidget):
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
 
+        # Target resolution: aim for ~1000-2000 pixels across the screen
+        target_res = visible_width_sec / 1000.0
+        # But don't go below 1.0s
+        target_res = max(1.0, target_res)
+
         max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
         min_offset = self.dsa_buffer.get_oldest_timestamp()
 
@@ -113,9 +118,11 @@ class DSAView(pg.GraphicsLayoutWidget):
                 self.live_mode = True
                 self._pan_sec = max_offset
 
-        self.t0, self.dsa_rect = self.dsa_buffer.get_view_at(
-            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec
+        self.t0, self.dsa_rect, actual_res = self.dsa_buffer.get_view_at(
+            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
+            target_resolution=target_res
         )
+        print(actual_res)
         data = self.dsa_rect.copy()
         data = np.ascontiguousarray(data) # array is stored in a continuous block of memory
         np.maximum(data, np.finfo(np.float32).eps, out=data)
@@ -129,12 +136,17 @@ class DSAView(pg.GraphicsLayoutWidget):
             self._last_levels = levels
 
         self.image.setImage(data, nan_policy="omit", autoLevels=False)
-        self.image.setRect((self.t0, config.LOWEST_FREQ_HZ, visible_width_sec, self.user_config.max_freq_hz))
+        self.image.setRect((self.t0, config.LOWEST_FREQ_HZ, actual_res * data.shape[0], self.user_config.max_freq_hz))
         self.plot.setXRange(self.t0, self.t0 + visible_width_sec, padding=0)
 
     def calibrate(self):
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
+
+        # Target resolution for calibration: use Level 0 (1s) if possible for accuracy,
+        # but for performance if zoomed out, we can use the same logic as update.
+        target_res = visible_width_sec / 1000.0
+        target_res = max(1.0, target_res)
 
         max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
         min_offset = self.dsa_buffer.get_oldest_timestamp()
@@ -147,8 +159,9 @@ class DSAView(pg.GraphicsLayoutWidget):
                 self.live_mode = True
                 self._pan_sec = max_offset
 
-        _, self.dsa_rect = self.dsa_buffer.get_view_at(
-            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec
+        _, self.dsa_rect, _ = self.dsa_buffer.get_view_at(
+            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
+            target_resolution=target_res
         )
         data = self.dsa_rect.copy()
         data = np.ascontiguousarray(data)  # array is stored in a continuous block of memory
