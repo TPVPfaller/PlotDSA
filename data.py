@@ -57,49 +57,19 @@ class DSABuffer:
     def append(self, ts, psd):
         if psd is None or len(psd) == 0:
             psd = np.full(self.n_freqs, np.nan, dtype=np.float32)
-
         if self.t0 is None:
             self.t0 = ts
 
-        # Update base resolution (Level 0: 1s)
-        self._append_to_res(1, ts, psd)
-
-        # Update higher resolutions
-        # We can either use a sliding average or just average non-overlapping blocks.
-        # Given the "slot" nature, non-overlapping blocks aligned to t0 is easier and consistent.
         for res in self.RESOLUTIONS:
             if res == 1:
-                continue
-            
-            # For higher resolutions, we want to average the base data.
-            # However, append() is called with 1s data. 
-            # We can use an accumulator for each resolution.
-            buf = self.buffers[res]
-            slot = int(math.floor((ts - self.t0) / res))
-            
-            if buf['last_slot'] is not None and slot < buf['last_slot']:
-                # Rewind detected, clear higher res too
-                self._clear_from_slot(res, slot)
-            
-            # Simple approach: average every 'res' samples from the 1s resolution.
-            # But append might not be called every second or might be called out of order.
-            # For simplicity and robust Class B behavior, let's just use the slot 
-            # and update the slot value (e.g. running average or just overwrite)
-            # Actually, to be accurate, Level N should be the mean of Level 0 frames.
-            # For now, let's do a simple update:
+                self._append_to_res(res, ts, psd)
+
             self._update_higher_res(res, ts, psd)
 
     def _append_to_res(self, res, ts, psd):
         buf = self.buffers[res]
-        slot = int(math.floor((ts - self.t0) / res + 0.5))
+        slot = int((ts - self.t0) / res + 0.5)
         max_f = buf['max_frames']
-
-        if buf['last_slot'] is not None and slot < buf['last_slot']:
-            self._clear_from_slot(res, slot)
-            buf['last_slot'] = slot - 1 if slot > 0 else None
-            if res == 1 and buf['last_slot'] is None:
-                self.t0 = ts
-                slot = 0
 
         idx = slot % max_f
 
@@ -134,40 +104,22 @@ class DSABuffer:
                  buf['full'] = True
         elif buf['last_slot'] == slot:
             # Update existing slot (running mean)
-            count = buf['counts'][idx]
+            count = buf['counts'][idx] # TODO: replace count with math.ceil((ts-self.t0) / res) - slot
             existing = buf['data'][idx]
             if np.isnan(existing).all():
                 buf['data'][idx] = psd
                 buf['counts'][idx] = 1
             else:
-                # Welford's algorithm or simple incremental mean
+                # Welford's algorithm
                 buf['data'][idx] = existing + (psd - existing) / (count + 1)
                 buf['counts'][idx] = count + 1
         else:
-            # Older slot, just ignore or update?
             if buf['last_slot'] is None or (buf['full'] and slot > buf['last_slot'] - max_f) or (not buf['full'] and slot >= 0):
                 buf['data'][idx] = psd
                 buf['timestamps'][idx] = self.t0 + slot * res
                 buf['counts'][idx] = 1
                 if buf['last_slot'] is None:
                     buf['last_slot'] = slot
-
-    def _clear_from_slot(self, res, slot):
-        buf = self.buffers[res]
-        max_f = buf['max_frames']
-        if buf['last_slot'] is None: return
-        
-        start_clear = slot
-        end_clear = buf['last_slot']
-        for s in range(start_clear, end_clear + 1):
-            buf['data'][s % max_f] = np.nan
-            buf['timestamps'][s % max_f] = np.nan
-            buf['counts'][s % max_f] = 0
-
-    def apply_config(self, display_minutes):
-        """Update buffer configuration and reset data."""
-        self.max_minutes = display_minutes
-        self._reset()
 
     def get_oldest_timestamp(self):
         buf = self.buffers[1]

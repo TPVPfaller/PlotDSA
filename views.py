@@ -102,9 +102,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
 
-        # Target resolution: aim for ~1000-2000 pixels across the screen
         target_res = visible_width_sec / 1000.0
-        # But don't go below 1.0s
         target_res = max(1.0, target_res)
 
         max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
