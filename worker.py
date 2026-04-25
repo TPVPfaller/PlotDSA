@@ -3,7 +3,8 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot
-from data import EEGStream, EEGBuffer, Output
+from buffers import EEGBuffer
+from input_output import EEGStream, Output
 import config
 
 

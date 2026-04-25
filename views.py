@@ -9,7 +9,7 @@ import time
 
 
 from config import EEG_MM_PER_SECOND
-from data import DSABuffer
+from buffers import DSABuffer
 import config
 
 
