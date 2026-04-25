@@ -115,9 +115,9 @@ class DSAApplication(QMainWindow):
         for ts, duration, psd in previous_data:
             steps = int(duration / config.TIME_RESOLUTION)
             for i in range(steps):
-                self.dsa_view.update((ts + i * config.TIME_RESOLUTION, psd))
+                self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
 
-        self.dsa_view.update(None, force_update=True)
+        self.dsa_view.update()
         self.dsa_view.jump_to_live()
 
 
@@ -249,14 +249,17 @@ class DSAApplication(QMainWindow):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
-    def _on_new_dsa_column(self, ts, psd):
-        self.dsa_view.update((ts, psd))
+    def _on_new_dsa_column(self, ts, psd, steps):
+        for i in range(steps):
+            self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
+        self.dsa_view.update()
 
         if self.psd_view.isVisible():
             self.psd_view.update(psd)
 
-
     def _on_new_samples(self, samples):
+        if not self.eeg_view.isVisible():
+            return
         for value in samples:
             self.eeg_view.append_sample(value)
         if samples:

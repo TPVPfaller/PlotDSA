@@ -32,7 +32,7 @@ FONT_SIZE = 15
 # Default values
 WINDOW_SEC: int = 10
 WINDOW_OVERLAP: float = 0.10
-DISPLAY_MINUTES: float = 30.0
+DISPLAY_MINUTES: float = 5.0
 MAX_FREQ_HZ: int = 30
 PSD_DB_MIN: int = -25
 PSD_DB_MAX: int = 20

@@ -28,7 +28,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._init_colormap()
         self._init_colorbar()
         self._init_gestures()
-        self.update(None, force_update=True)
+        self.update()
 
     def _init_parameters(self):
         self.live_mode = True
@@ -90,19 +90,17 @@ class DSAView(pg.GraphicsLayoutWidget):
     def _init_gestures(self):
         self.grabGesture(Qt.PinchGesture)
 
+    def append(self, ts, psd):
+        if psd is not None:
+            self.dsa_buffer.append(ts, psd)
 
     # ------------------ Update & Rendering ------------------ #
-    def update(self, dsa_column, force_update=False):
-        if dsa_column is not None:
-            ts, psd = dsa_column
-            self.dsa_buffer.append(ts, psd)
-        if time.time() - self._last_render < 0.5 and not force_update:
-            return
+    def update(self):
         self._last_render = time.time()
         visible_width_sec = self.display_minutes * 60.0
         n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
 
-        target_res = visible_width_sec / 1000.0
+        target_res = visible_width_sec / 2160.0 # When displaying more than 6 hours reduce resolution to 10s
         target_res = max(1.0, target_res)
 
         max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
@@ -120,9 +118,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
             target_resolution=target_res
         )
-        print(actual_res)
-        data = self.dsa_rect.copy()
-        data = np.ascontiguousarray(data) # array is stored in a continuous block of memory
+        data = np.ascontiguousarray(self.dsa_rect)
         np.maximum(data, np.finfo(np.float32).eps, out=data)
         np.log10(data, out=data)
         data *= 10
@@ -161,8 +157,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
             target_resolution=target_res
         )
-        data = self.dsa_rect.copy()
-        data = np.ascontiguousarray(data)  # array is stored in a continuous block of memory
+        data = np.ascontiguousarray(self.dsa_rect)
 
         np.maximum(data, np.finfo(np.float32).eps, out=data)
         np.log10(data, out=data)
@@ -183,7 +178,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self.dsa_buffer.t0 is not None:
             visible_width_sec = self.display_minutes * 60
             self._pan_sec = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
-            self.update(None, force_update=True)
+            self.update()
 
     def pan(self, delta_percent):
         """External pan control"""
@@ -196,14 +191,14 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self.live_mode = False
         self._pan_sec += self.display_minutes * delta_percent * 60
-        self.update(None, force_update=True)
+        self.update()
 
     def clear_data(self):
         """Delete all buffered data"""
         self.dsa_buffer = DSABuffer()
         self.live_mode = True
         self._pan_sec = 0.0
-        self.update(None, force_update=True)
+        self.update()
 
     # ------------------ Mouse & Gesture ------------------ #
     def mousePressEvent(self, ev):
@@ -226,7 +221,7 @@ class DSAView(pg.GraphicsLayoutWidget):
                 self._pan_sec = self.dsa_buffer.t0
             self._pan_sec -= dt
             self.live_mode = False
-            self.update(None, force_update=True)
+            self.update()
 
             ev.accept()
         else:
@@ -259,7 +254,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             min_m, max_m = config.DISPLAY_MINUTES_BOUNDS
             new_minutes = np.clip(new_minutes, min_m, max_m)
             self.on_zoom_change(new_minutes)
-            self.update(None, force_update=True)
+            self.update()
         return True
 
     def apply_zoom(self, new_minutes):
@@ -278,7 +273,7 @@ class DSAView(pg.GraphicsLayoutWidget):
                 max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
                 min_offset = self.dsa_buffer.get_oldest_timestamp()
                 self._pan_sec = max(min_offset, min(self._pan_sec, max_offset))
-        self.update(None, force_update=True)
+        self.update()
 
     def apply_config(self, new_config):
         old_config = self.user_config
@@ -287,7 +282,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.plot.setYRange(config.LOWEST_FREQ_HZ, self.user_config.max_freq_hz, padding=0)
             self.freq_bins = config.FREQ_BINS[(config.FREQ_BINS <= self.user_config.max_freq_hz)]
 
-        self.update(None, force_update=True)
+        self.update()
 
 
 

@@ -1,5 +1,6 @@
 import math
 import os, sys
+from collections import deque
 
 # fix lsl for single file .exe
 if getattr(sys, "frozen", False):
@@ -18,162 +19,119 @@ import datetime
 class DSABuffer:
     """Multi-resolution Ring buffer for DSA frames.
 
-    Stores PSD columns aligned to a fixed time grid at multiple resolutions
-    to improve performance when viewing large time ranges.
+    Stores only populated PSD columns aligned to a fixed time grid at multiple
+    resolutions, then reconstructs NaN-padded views on demand.
     """
 
-    RESOLUTIONS = [1, 10, 60, 300]  # seconds per frame
+    RESOLUTIONS = [1, 10, 40, 100, 300, 600]  # seconds per frame
 
     def __init__(self):
         self.max_minutes = config.DISPLAY_MINUTES_BOUNDS[1]
         self.n_freqs = len(config.FREQ_BINS)
-        
-        # We'll use a dictionary to store buffers for each resolution
-        self.buffers = {}
-        # Each level will have: data, timestamps, last_slot, full, max_frames
-        
         try:
             self._reset()
         except MemoryError:
             print("Failed to allocate DSABuffer. Reducing size.")
-            self.max_minutes = 24 * 60  # 24 hours fallback
+            self.max_minutes = 24 * 60
             self._reset()
 
     def _reset(self):
-        self.buffers = {}
         self.t0 = None
-
-        for res in self.RESOLUTIONS:
-            max_frames = int(self.max_minutes * 60 / res)
-            self.buffers[res] = {
-                'data': np.full((max_frames, self.n_freqs), np.nan, dtype=np.float32),
-                'timestamps': np.full(max_frames, np.nan, dtype=np.float64),
+        self.latest_timestamp = None
+        self.buffers = {
+            res: {
+                'data': {},
+                'order': deque(),
                 'last_slot': None,
-                'full': False,
-                'max_frames': max_frames,
-                'counts': np.zeros(max_frames, dtype=np.int32)
+                'max_frames': int(self.max_minutes * 60 / res),
+                'counts': {}
             }
+            for res in self.RESOLUTIONS
+        }
 
     def append(self, ts, psd):
-        if psd is None or len(psd) == 0:
-            psd = np.full(self.n_freqs, np.nan, dtype=np.float32)
+        has_data = psd is not None and len(psd) and not np.isnan(psd).all()
+        if has_data:
+            psd = np.array(psd, dtype=np.float32, copy=True)
+        else:
+            psd = None
+
         if self.t0 is None:
             self.t0 = ts
+        self.latest_timestamp = ts
 
-        for res in self.RESOLUTIONS:
-            if res == 1:
-                self._append_to_res(res, ts, psd)
+        for res, buf in self.buffers.items():
+            self._append_to_res(buf, self._get_slot(ts, res), psd, res)
 
-            self._update_higher_res(res, ts, psd)
+    def _get_slot(self, ts, res):
+        offset = (ts - self.t0) / res
+        return int(offset + 0.5) if res == 1 else int(math.floor(offset))
 
-    def _append_to_res(self, res, ts, psd):
-        buf = self.buffers[res]
-        slot = int((ts - self.t0) / res + 0.5)
-        max_f = buf['max_frames']
+    def _append_to_res(self, buf, slot, psd, res):
+        last_slot = buf['last_slot']
+        if last_slot is None or slot > last_slot:
+            self._trim_expired_slots(buf, slot)
+            buf['last_slot'] = slot
 
-        idx = slot % max_f
+        if psd is None:
+            return
 
-        # Fill gaps with NaNs
-        if buf['last_slot'] is not None and slot > buf['last_slot'] + 1:
-            for s in range(buf['last_slot'] + 1, slot):
-                buf['data'][s % max_f] = np.nan
-                buf['timestamps'][s % max_f] = self.t0 + s * res
-
-        buf['data'][idx] = psd
-        buf['timestamps'][idx] = ts
-
-        if buf['last_slot'] is not None:
-            if slot - buf['last_slot'] >= max_f or slot >= max_f:
-                buf['full'] = True
-        
-        buf['last_slot'] = max(buf['last_slot'], slot) if buf['last_slot'] is not None else slot
-
-    def _update_higher_res(self, res, ts, psd):
-        buf = self.buffers[res]
-        slot = int(math.floor((ts - self.t0) / res))
-        max_f = buf['max_frames']
-        idx = slot % max_f
-
-        if buf['last_slot'] is not None and slot > buf['last_slot']:
-             # New slot in higher res, initialize it
-             buf['data'][idx] = psd
-             buf['timestamps'][idx] = self.t0 + slot * res
-             buf['last_slot'] = slot
-             buf['counts'][idx] = 1
-             if slot >= max_f:
-                 buf['full'] = True
-        elif buf['last_slot'] == slot:
-            # Update existing slot (running mean)
-            count = buf['counts'][idx] # TODO: replace count with math.ceil((ts-self.t0) / res) - slot
-            existing = buf['data'][idx]
-            if np.isnan(existing).all():
-                buf['data'][idx] = psd
-                buf['counts'][idx] = 1
-            else:
-                # Welford's algorithm
-                buf['data'][idx] = existing + (psd - existing) / (count + 1)
-                buf['counts'][idx] = count + 1
+        existing = buf['data'].get(slot)
+        if existing is None or res == 1:
+            buf['data'][slot] = psd
+            if existing is None:
+                buf['counts'][slot] = 1
+                buf['order'].append(slot)
         else:
-            if buf['last_slot'] is None or (buf['full'] and slot > buf['last_slot'] - max_f) or (not buf['full'] and slot >= 0):
-                buf['data'][idx] = psd
-                buf['timestamps'][idx] = self.t0 + slot * res
-                buf['counts'][idx] = 1
-                if buf['last_slot'] is None:
-                    buf['last_slot'] = slot
+            count = buf['counts'][slot]
+            buf['data'][slot] = existing + (psd - existing) / (count + 1)
+            buf['counts'][slot] = count + 1
+
+
+    def _trim_expired_slots(self, buf, latest_slot):
+        oldest_kept = max(0, latest_slot - buf['max_frames'] + 1)
+        while buf['order'] and buf['order'][0] < oldest_kept:
+            expired_slot = buf['order'].popleft()
+            del buf['data'][expired_slot]
+            del buf['counts'][expired_slot]
+
+    def _get_oldest_slot(self, res):
+        if self.t0 is None:
+            return None
+        buf = self.buffers[res]
+        if buf['last_slot'] is None:
+            return 0
+        return max(0, buf['last_slot'] - buf['max_frames'] + 1)
 
     def get_oldest_timestamp(self):
-        buf = self.buffers[1]
-        if buf['last_slot'] is None:
-            return time.time()
-        if not buf['full']:
-            return self.t0
-        return self.t0 + (buf['last_slot'] - buf['max_frames'] + 1) * 1.0
+        oldest_slot = self._get_oldest_slot(1)
+        return time.time() if oldest_slot is None else self.t0 + oldest_slot
 
     def get_newest_timestamp(self):
-        buf = self.buffers[1]
-        if buf['last_slot'] is None:
-            return time.time()
-        return buf['timestamps'][buf['last_slot'] % buf['max_frames']]
+        return time.time() if self.latest_timestamp is None else self.latest_timestamp
 
-    def get_view_at(self, width, height, pan_sec, target_resolution=None):
+    def get_view_at(self, width, height, pan_sec, target_resolution):
         """Return a frame starting at pan_sec with optimal resolution."""
-        if self.t0 is None:
-            return float(time.time()), np.full((width, height), np.nan, dtype=np.float32), 1
-
-        # Select resolution
-        res = 1
-        if target_resolution is not None:
-            # Find closest available resolution
-            res = min(self.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
-
-        buf = self.buffers[res]
-        max_f = buf['max_frames']
-
+        res = min(self.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
         effective_width = max(1, int(width / res))
-        
+        if self.t0 is None:
+            return float(time.time()), np.full((effective_width, height), np.nan, dtype=np.float32), res
+
+        pan_sec = max(pan_sec, self.t0)
+        buf = self.buffers[res]
+        data = buf['data']
         slot_start = int(math.floor((pan_sec - self.t0) / res))
-        slot_end = slot_start + effective_width - 1
-
-        if buf['last_slot'] is not None:
-            if slot_end > buf['last_slot']:
-                slot_end = buf['last_slot']
-                slot_start = max(0, slot_end - effective_width + 1)
-            
-            if not buf['full']:
-                slot_start = max(0, slot_start)
-            else:
-                min_available = buf['last_slot'] - max_f + 1
-                slot_start = max(min_available, slot_start)
-        
+        slot_start = max(self._get_oldest_slot(res) or 0, slot_start)
+        slot_end = min(slot_start + effective_width - 1, buf['last_slot'])
         actual_width = slot_end - slot_start + 1
-        if actual_width <= 0:
-            return pan_sec, np.full((1, height), np.nan, dtype=np.float32), 1
-
-        idxs = (np.arange(actual_width) + slot_start) % max_f
         t_start = self.t0 + slot_start * res
-        
-        frame = buf['data'][idxs, :height]
-        
+        frame = np.full((actual_width, height), np.nan, dtype=np.float32)
+
+        for frame_idx, slot in enumerate(range(slot_start, slot_end + 1)):
+            column = data.get(slot)
+            if column is not None:
+                frame[frame_idx] = column[:height]
+
         return float(t_start), frame, res
 
 
@@ -422,8 +380,11 @@ class Output:
             os.makedirs(directory, exist_ok=True)
 
         write_header = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
+        existing_rows = []
+        timestamp_exists = False
+        truncated = False
 
-        # If appending to an existing file, validate column count and check for existing timestamp
+        # If appending to an existing file, validate column count and truncate any newer rows.
         if not write_header:
             try:
                 with open(filepath, "r", newline="") as f:
@@ -438,17 +399,32 @@ class Output:
                                 f"Existing CSV has {len(header)} columns but expected {expected_cols}. "
                                 "Frequency bins must remain identical across saves."
                             )
-                        
-                        # Optimization: check if timestamp is already in the file
-                        # For efficiency, we read the whole file once, but since this is called for each save
-                        # we might want to be careful. However, 86k lines is manageable.
-                        # For Class B, it's safer to check the whole file.
+
                         for row in reader:
-                            if row and row[0] == ts_str:
-                                return  # Already exists, skip saving
+                            if not row:
+                                continue
+                            row_ts = row[0]
+                            if row_ts > ts_str:
+                                truncated = True
+                                continue
+                            existing_rows.append(row)
+                            if row_ts == ts_str:
+                                timestamp_exists = True
             except FileNotFoundError:
                 print(f"File not found: {filepath} creating new file")
                 write_header = True
+
+        if truncated:
+            with open(filepath, "w", newline="") as f:
+                writer = csv.writer(f)
+                freq_headers = [f"f_{freq:.1f}_Hz" for freq in config.FREQ_BINS]
+                writer.writerow(["timestamp", "duration"] + freq_headers)
+                writer.writerows(existing_rows)
+            write_header = False
+
+        if timestamp_exists:
+            return
+
         with open(filepath, "a", newline="") as f:
             writer = csv.writer(f)
             if write_header:

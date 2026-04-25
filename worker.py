@@ -8,7 +8,7 @@ import config
 
 
 class ProcessingWorker(QObject):
-    new_dsa_column = Signal(float, object)  # timestamp, power spectral density array (psd)
+    new_dsa_column = Signal(float, object, int)  # timestamp, power spectral density array (psd), steps
     new_samples = Signal(object)  # list of eeg values
 
     def __init__(self, user_config):
@@ -66,8 +66,7 @@ class ProcessingWorker(QObject):
 
                 duration = steps * config.TIME_RESOLUTION
 
-                for i in range(steps):
-                    self.new_dsa_column.emit(ts + i * config.TIME_RESOLUTION, psd)
+                self.new_dsa_column.emit(ts, psd, steps)
 
                 self._io_executor.submit(Output.save_psd_to_csv, ts, duration, psd)
 

@@ -49,7 +49,7 @@ class TopBar(QWidget):
 
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
-        self.zoom_slider.setMaximum(100)
+        self.zoom_slider.setMaximum(1000)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
 
         layout.addWidget(self.zoom_slider)
@@ -106,7 +106,7 @@ class TopBar(QWidget):
     def _zoom_changed(self, value):
         min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS
 
-        t = (value - 1) / 99.0  # 0..1 linear
+        t = (value - 1) / 999.0  # 0..1 linear
 
         # invert gamma effect for desired behavior
         t = 1.0 - (1.0 - t) ** self.GAMMA
@@ -123,7 +123,7 @@ class TopBar(QWidget):
         # inverse of forward curve
         t = 1.0 - (1.0 - t) ** (1.0 / self.GAMMA)
 
-        val_zoom = 1 + 99.0 * t
+        val_zoom = 1 + 999.0 * t
 
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(round(val_zoom)))
