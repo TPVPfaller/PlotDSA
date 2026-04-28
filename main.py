@@ -32,7 +32,7 @@ from input_output import Output
 import pyqtgraph as pg
 
 from config import UserConfig
-from settings_ui import TopBar, SettingsDialog
+from settings_ui import TopBar, SettingsDialog, EEGSettingsDialog
 from worker import ProcessingWorker
 from views import DSAView, PSDView, EEGView
 
@@ -340,7 +340,7 @@ class DSAApplication(QMainWindow):
     def _init_ui(self):
         self.dsa_view = DSAView(self.user_config, self._on_config_change, self._on_zoom_change)
         self.psd_view = PSDView(self.user_config)
-        self.eeg_view = EEGView()
+        self.eeg_view = EEGView(self.user_config)
 
         self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan, self.dsa_view.calibrate)
         self._create_menu()
@@ -419,14 +419,13 @@ class DSAApplication(QMainWindow):
 
         menu.addSeparator()
 
-        action_settings = QAction("Settings", self)
-        action_settings.setShortcut("Ctrl+,")
+        action_settings = QAction("DSA Settings", self)
         action_settings.triggered.connect(self._open_settings)
         menu.addAction(action_settings)
 
-        action_load_data = QAction("Load Data from Time...", self)
-        action_load_data.triggered.connect(self._on_load_data_clicked)
-        menu.addAction(action_load_data)
+        action_eeg_settings = QAction("EEG Sweep Speed", self)
+        action_eeg_settings.triggered.connect(self._open_eeg_settings)
+        menu.addAction(action_eeg_settings)
 
         menu.addSeparator()
 
@@ -441,6 +440,10 @@ class DSAApplication(QMainWindow):
         self.action_show_dsa = self._create_toggle_action(view_menu, "Show DSA", True, self.dsa_view)
         self.action_show_psd = self._create_toggle_action(view_menu, "Show PSD", False, self.psd_view)
         self.action_show_eeg = self._create_toggle_action(view_menu, "Show EEG", True, self.eeg_view)
+
+        action_load_data = QAction("Load Data from Time", self)
+        action_load_data.triggered.connect(self._on_load_data_clicked)
+        view_menu.addAction(action_load_data)
 
         action_clear_data = QAction("Clear Data", self)
         action_clear_data.triggered.connect(self._confirm_clear_data)
@@ -524,6 +527,10 @@ class DSAApplication(QMainWindow):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
+    def _open_eeg_settings(self):
+        dialog = EEGSettingsDialog(self.user_config, self._on_config_change, self)
+        dialog.exec()
+
     def _on_new_dsa_column(self, ts, psd, steps):
         for i in range(steps):
             self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
@@ -578,6 +585,7 @@ class DSAApplication(QMainWindow):
         self.worker.apply_config(new_config)
         self.dsa_view.apply_config(new_config)
         self.psd_view.apply_config(new_config)
+        self.eeg_view.apply_config(new_config)
 
         self._update_status()
 

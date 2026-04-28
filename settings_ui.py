@@ -4,7 +4,7 @@ import numpy as np
 
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
-    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QStyle
+    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QStyle, QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics, QIcon
@@ -142,7 +142,7 @@ class TopBar(QWidget):
 class SettingsDialog(QDialog):
     def __init__(self, user_config, on_config_change, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("System Settings")
+        self.setWindowTitle("DSA Settings")
         self.setMinimumSize(640, 260)
 
         self.user_config = user_config
@@ -312,6 +312,81 @@ class SettingsDialog(QDialog):
                 psd_db_min=proposed_psd_min,
                 psd_db_max=proposed_psd_max,
             )
+            self.on_config_change(new_config)
+            self.accept()
+        except ValueError as e:
+            QMessageBox.critical(self, "Invalid Configuration", str(e))
+
+
+class EEGSettingsDialog(QDialog):
+    def __init__(self, user_config, on_config_change, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("EEG Settings")
+        self.setMinimumSize(360, 220)
+
+        self.user_config = user_config
+        self.on_config_change = on_config_change
+        self.speed_buttons = {}
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        title = QLabel("EEG sweep speed")
+        title.setStyleSheet(f"font-size: {config.FONT_SIZE + 1}px; font-weight: 600;")
+        layout.addWidget(title)
+
+        self.button_group = QButtonGroup(self)
+        for value in config.EEG_MM_PER_SECOND_OPTIONS:
+            label = f"{value:g} mm/s"
+            button = QRadioButton(label)
+            button.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+            self.button_group.addButton(button)
+            self.speed_buttons[value] = button
+            layout.addWidget(button)
+
+        selected_button = self.speed_buttons.get(self.user_config.eeg_mm_per_second)
+        if selected_button is not None:
+            selected_button.setChecked(True)
+
+        layout.addStretch(1)
+
+        button_row = QHBoxLayout()
+        button_row.setSpacing(10)
+
+        reset_btn = QPushButton("Reset to Default")
+        reset_btn.setMinimumHeight(44)
+        reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        reset_btn.clicked.connect(self._reset_to_default)
+        button_row.addWidget(reset_btn)
+
+        button_row.addStretch(1)
+
+        apply_btn = QPushButton("Apply and Close")
+        apply_btn.setMinimumHeight(44)
+        apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        apply_btn.clicked.connect(self._apply)
+        button_row.addWidget(apply_btn)
+
+        layout.addLayout(button_row)
+
+    def _reset_to_default(self):
+        default_button = self.speed_buttons.get(config.EEG_MM_PER_SECOND)
+        if default_button is not None:
+            default_button.setChecked(True)
+
+    def _apply(self):
+        selected_value = next(
+            (value for value, button in self.speed_buttons.items() if button.isChecked()),
+            None,
+        )
+
+        if selected_value is None:
+            QMessageBox.critical(self, "Invalid Configuration", "Select an EEG sweep speed.")
+            return
+
+        try:
+            new_config = self.user_config.update(eeg_mm_per_second=selected_value)
             self.on_config_change(new_config)
             self.accept()
         except ValueError as e:

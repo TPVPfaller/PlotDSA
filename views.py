@@ -8,7 +8,6 @@ from PySide6.QtCore import Qt, QEvent, QTimer
 import time
 
 
-from config import EEG_MM_PER_SECOND
 from buffers import DSABuffer
 import config
 
@@ -317,8 +316,9 @@ class EEGView(pg.PlotWidget):
 
     RENDER_HZ = 20
 
-    def __init__(self):
+    def __init__(self, user_config):
         super().__init__()
+        self.user_config = user_config
 
         # --- Plot setup ---
         self.setLabel("left", "EEG", units="µV")
@@ -376,6 +376,7 @@ class EEGView(pg.PlotWidget):
         self._pending = deque()
         self._sample_period = 1.0 / config.SAMPLE_RATE_HZ
         self._last_rendered_head = -1
+        self.seconds_visible = config.EEG_VIEW_WINDOW_SEC
 
         # --- View limits ---
         self.setXRange(0, config.EEG_VIEW_WINDOW_SEC, padding=0)
@@ -404,9 +405,14 @@ class EEGView(pg.PlotWidget):
         screen = handle.screen()
         dpi = screen.logicalDotsPerInch() if screen else 96
 
-        px_per_sec = EEG_MM_PER_SECOND * dpi / 25.4
+        px_per_sec = self.user_config.eeg_mm_per_second * dpi / 25.4
 
-        width_px = self.width()
+        view_box = self.getViewBox()
+        if view_box is None:
+            return
+
+        # Use the actual drawable plot width, not the outer PlotWidget width.
+        width_px = view_box.sceneBoundingRect().width()
         if width_px <= 0:
             return
 
@@ -473,6 +479,10 @@ class EEGView(pg.PlotWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._update_time_scale()
+
+    def apply_config(self, user_config):
+        self.user_config = user_config
         self._update_time_scale()
 
     # ------------------------------------------------------------------

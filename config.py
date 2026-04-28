@@ -14,7 +14,7 @@ import numpy as np
 Immutable system constants.
 These should never change during runtime.
 """
-SAMPLE_RATE_HZ: int = 250
+SAMPLE_RATE_HZ: int = 400
 TIME_RESOLUTION: float = 1.0
 DSA_FPS: float = 0.5
 INTERVAL: float = 1.1
@@ -24,7 +24,8 @@ EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
 BASE_DIR: str = "C:\\temp\\VSCaptureWave"
 LSL_STREAM_NAME: str = "EEG_DATA"
 EEG_VIEW_WINDOW_SEC: float = 4.0
-EEG_MM_PER_SECOND: int = 30
+EEG_MM_PER_SECOND: float = 30.0
+EEG_MM_PER_SECOND_OPTIONS: Tuple[float, ...] = (7.5, 15.0, 30.0)
 N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for Welch's method
 FONT_SIZE = 15
 
@@ -65,6 +66,7 @@ class UserConfig:
     max_freq_hz: int = MAX_FREQ_HZ
     psd_db_min: int = PSD_DB_MIN
     psd_db_max: int = PSD_DB_MAX
+    eeg_mm_per_second: float = EEG_MM_PER_SECOND
     use_multitaper: bool = USE_MULTITAPER
 
     def __post_init__(self):
@@ -86,6 +88,11 @@ class UserConfig:
         if self.psd_db_min >= self.psd_db_max:
             raise ValueError(
                 f"psd_db_min ({self.psd_db_min}) must be less than psd_db_max ({self.psd_db_max})"
+            )
+
+        if self.eeg_mm_per_second not in EEG_MM_PER_SECOND_OPTIONS:
+            raise ValueError(
+                f"eeg_mm_per_second must be one of {EEG_MM_PER_SECOND_OPTIONS}, got {self.eeg_mm_per_second}"
             )
 
     def update(self, **kwargs) -> 'UserConfig':
