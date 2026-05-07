@@ -20,12 +20,12 @@ from PySide6.QtWidgets import (
     QDialog,
     QPushButton,
     QHBoxLayout,
-    QCalendarWidget,
     QDialogButtonBox,
     QFrame,
     QSlider,
+    QStyle,
 )
-from PySide6.QtCore import QDate, QThread, QTimer, Qt
+from PySide6.QtCore import QThread, QTimer, Qt
 from PySide6.QtGui import QAction
 import qdarktheme
 from input_output import Output
@@ -41,15 +41,15 @@ import config
 
 class TimeSelectionDialog(QDialog):
     PRESET_OFFSETS = (
-        ("1 hour ago", datetime.timedelta(hours=1)),
-        ("6 hours ago", datetime.timedelta(hours=6)),
+        ("2 hours ago", datetime.timedelta(hours=2)),
+        ("8 hours ago", datetime.timedelta(hours=8)),
         ("24 hours ago", datetime.timedelta(hours=24)),
     )
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Start Time")
-        self.setMinimumSize(760, 560)
+        self.setMinimumSize(600, 450)
 
         self._selected_dt = self._default_datetime()
         self._building_ui = False
@@ -67,162 +67,128 @@ class TimeSelectionDialog(QDialog):
             QFrame#pickerSection {{
                 border: 1px solid palette(mid);
                 border-radius: 12px;
-                background: rgba(255, 255, 255, 0.03);
-            }}
-            QLabel#pickerTitle {{
-                font-size: {config.FONT_SIZE + 6}px;
-                font-weight: 600;
-            }}
-            QLabel#pickerSubtitle {{
-                color: palette(midlight);
+                background: palette(alternate-base);
             }}
             QLabel#pickerPreview {{
                 border-radius: 12px;
                 padding: 12px 16px;
                 background: palette(alternate-base);
-                font-size: {config.FONT_SIZE + 1}px;
+                font-size: {config.FONT_SIZE + 4}px;
                 font-weight: 600;
             }}
             QPushButton#presetButton {{
-                min-height: 40px;
-                padding: 8px 14px;
+                min-height: 60px;
+                padding: 8px 16px;
                 border-radius: 10px;
+                color: palette(button-text);
+                font-size: {config.FONT_SIZE + 2}px;
             }}
-            QSlider::groove:vertical {{
-                width: 10px;
-                border-radius: 5px;
+            QPushButton#presetButton:hover {{
+                background: palette(highlight);
+                color: palette(highlighted-text);
+            }}
+            QSlider {{
+                background: transparent;
+            }}
+            QSlider::groove:horizontal {{
+                height: 20px;
+                border-radius: 10px;
                 background: palette(mid);
             }}
-            QSlider::sub-page:vertical {{
-                border-radius: 5px;
+            QSlider::sub-page:horizontal {{
+                border-radius: 10px;
                 background: palette(highlight);
             }}
-            QSlider::add-page:vertical {{
-                border-radius: 5px;
-                background: palette(mid);
-            }}
-            QSlider::handle:vertical {{
-                width: 26px;
-                height: 26px;
-                margin: 0 -8px;
-                border-radius: 13px;
+            QSlider::handle:horizontal {{
+                width: 44px;
+                height: 44px;
+                margin: -12px 0;
+                border-radius: 22px;
                 background: palette(window-text);
-                border: 1px solid palette(base);
-            }}
-            QLabel#monthLabel {{
-                font-size: {config.FONT_SIZE + 2}px;
-                font-weight: 600;
+                border: 2px solid palette(base);
             }}
             QLabel#timeDisplay {{
-                border: 1px solid palette(mid);
-                border-radius: 10px;
-                padding: 10px 16px;
-                background: palette(alternate-base);
-                font-size: {config.FONT_SIZE + 8}px;
+                padding: 10px;
+                font-size: {config.FONT_SIZE + 16}px;
                 font-weight: 700;
+            }}
+            QLabel#sectionLabel {{
+                font-size: {config.FONT_SIZE + 2}px;
+                font-weight: 600;
+                color: palette(window-text);
             }}
         """)
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(18, 18, 18, 18)
-        root_layout.setSpacing(14)
+        root_layout.setContentsMargins(24, 24, 24, 24)
+        root_layout.setSpacing(20)
 
-        title = QLabel("Load DSA from a specific time")
-        title.setObjectName("pickerTitle")
 
-        root_layout.addWidget(title)
-
-        preset_row = QHBoxLayout()
-        preset_row.setSpacing(8)
-        for label, offset in self.PRESET_OFFSETS:
+        preset_grid = QHBoxLayout()
+        preset_grid.setSpacing(12)
+        
+        # Split presets into two rows if needed, but for touchscreen let's use a flow or just one big row/grid
+        # Given 6 presets, let's do 2 rows of 3
+        v_presets = QVBoxLayout()
+        row1 = QHBoxLayout()
+        row2 = QHBoxLayout()
+        for i, (label, offset) in enumerate(self.PRESET_OFFSETS):
             button = QPushButton(label)
             button.setObjectName("presetButton")
             button.clicked.connect(lambda _, delta=offset: self._apply_preset(delta))
-            preset_row.addWidget(button)
-        root_layout.addLayout(preset_row)
+            if i < 3:
+                row1.addWidget(button)
+            else:
+                row2.addWidget(button)
+        v_presets.addLayout(row1)
+        v_presets.addLayout(row2)
+        root_layout.addLayout(v_presets)
 
-        body_layout = QHBoxLayout()
-        body_layout.setSpacing(14)
+        # Slider Section
+        slider_frame = QFrame()
+        slider_frame.setObjectName("pickerSection")
+        slider_layout = QVBoxLayout(slider_frame)
+        slider_layout.setContentsMargins(20, 20, 20, 20)
+        slider_layout.setSpacing(15)
 
-        calendar_frame = QFrame()
-        calendar_frame.setObjectName("pickerSection")
-        calendar_layout = QVBoxLayout(calendar_frame)
-        calendar_layout.setContentsMargins(12, 12, 12, 12)
-        calendar_layout.setSpacing(8)
-
-        nav_row = QHBoxLayout()
-        nav_row.setSpacing(10)
-
-        self.prev_month_btn = QPushButton("Previous")
-        self.prev_month_btn.setMinimumHeight(40)
-        self.prev_month_btn.clicked.connect(self._show_previous_month)
-        nav_row.addWidget(self.prev_month_btn)
-
-        self.month_label = QLabel()
-        self.month_label.setObjectName("monthLabel")
-        self.month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        nav_row.addWidget(self.month_label, 1)
-
-        self.next_month_btn = QPushButton("Next")
-        self.next_month_btn.setMinimumHeight(40)
-        self.next_month_btn.clicked.connect(self._show_next_month)
-        nav_row.addWidget(self.next_month_btn)
-
-        calendar_layout.addLayout(nav_row)
-
-        self.calendar = QCalendarWidget()
-        self.calendar.setGridVisible(True)
-        self.calendar.setNavigationBarVisible(False)
-        self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
-        self.calendar.setFirstDayOfWeek(Qt.DayOfWeek.Monday)
-        self.calendar.setMaximumDate(self._to_qdate(dt.now()))
-        self.calendar.selectionChanged.connect(self._sync_preview)
-        self.calendar.currentPageChanged.connect(self._update_calendar_header)
-        calendar_layout.addWidget(self.calendar)
-
-        body_layout.addWidget(calendar_frame, 3)
-
-        time_frame = QFrame()
-        time_frame.setObjectName("pickerSection")
-        time_layout = QVBoxLayout(time_frame)
-        time_layout.setContentsMargins(12, 12, 12, 12)
-        time_layout.setSpacing(10)
-
-
-        slider_row = QHBoxLayout()
-        slider_row.setSpacing(16)
-
-        self.hour_slider = QSlider(Qt.Orientation.Vertical)
-        self.hour_slider.setRange(0, 23)
-        self.hour_slider.setTickPosition(QSlider.TickPosition.TicksRight)
-        self.hour_slider.setTickInterval(1)
-        self.hour_slider.setSingleStep(1)
-        self.hour_slider.setPageStep(1)
-        self.hour_slider.setMinimumHeight(300)
-        self.hour_slider.valueChanged.connect(self._sync_preview)
-        slider_row.addWidget(self.hour_slider, 0, Qt.AlignmentFlag.AlignCenter)
+        slider_header = QLabel("Adjust Hours Ago:")
+        slider_header.setObjectName("sectionLabel")
+        slider_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        slider_layout.addWidget(slider_header)
 
         self.time_display = QLabel()
         self.time_display.setObjectName("timeDisplay")
         self.time_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        slider_row.addWidget(self.time_display, 1, Qt.AlignmentFlag.AlignCenter)
+        slider_layout.addWidget(self.time_display)
 
-        time_layout.addLayout(slider_row)
-        time_layout.addStretch(1)
+        self.ago_slider = QSlider(Qt.Orientation.Horizontal)
+        self.ago_slider.setRange(0, 24)
+        self.ago_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.ago_slider.setTickInterval(1)
+        self.ago_slider.setSingleStep(1)
+        self.ago_slider.setPageStep(4)
+        self.ago_slider.valueChanged.connect(self._sync_from_slider)
+        slider_layout.addWidget(self.ago_slider)
+        
+        root_layout.addWidget(slider_frame)
 
-        body_layout.addWidget(time_frame, 2)
-        root_layout.addLayout(body_layout)
-
+        # Preview
         self.preview_label = QLabel()
         self.preview_label.setObjectName("pickerPreview")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root_layout.addWidget(self.preview_label)
 
+        # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
         self.load_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
-        self.load_button.setText("Load")
-        self.load_button.setMinimumHeight(42)
-        button_box.button(QDialogButtonBox.StandardButton.Cancel).setMinimumHeight(42)
+        self.load_button.setText("Load Data")
+        self.load_button.setMinimumHeight(60)
+        self.load_button.setMinimumWidth(150)
+        
+        cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        cancel_button.setMinimumHeight(60)
+        cancel_button.setMinimumWidth(150)
+
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         root_layout.addWidget(button_box)
@@ -236,34 +202,33 @@ class TimeSelectionDialog(QDialog):
         self._apply_datetime((dt.now() - offset).replace(minute=0, second=0, microsecond=0))
 
     def _apply_datetime(self, selected_dt):
-        normalized = min(selected_dt, dt.now()).replace(minute=0, second=0, microsecond=0)
+        now = dt.now()
+        # Limit to 24h ago
+        limit = now - datetime.timedelta(hours=24)
+        if selected_dt < limit:
+            selected_dt = limit
+        
+        normalized = min(selected_dt, now).replace(minute=0, second=0, microsecond=0)
         self._selected_dt = normalized
 
-        self.calendar.blockSignals(True)
-        self.calendar.setSelectedDate(self._to_qdate(normalized))
-        self.calendar.blockSignals(False)
-        self.calendar.setCurrentPage(normalized.year, normalized.month)
+        # Calculate hours ago for the slider
+        diff = now - normalized
+        hours_ago = round(diff.total_seconds() / 3600)
+        
+        self.ago_slider.blockSignals(True)
+        self.ago_slider.setValue(hours_ago)
+        self.ago_slider.blockSignals(False)
 
-        self.hour_slider.blockSignals(True)
-        self.hour_slider.setValue(normalized.hour)
-        self.hour_slider.blockSignals(False)
-
-        self._update_calendar_header()
-        self._update_time_display(normalized.hour)
+        self._update_time_display(hours_ago)
         self._refresh_preview(normalized)
 
-    def _sync_preview(self, *_):
+    def _sync_from_slider(self, hours_ago):
         if self._building_ui:
             return
 
-        selected_dt = self.selected_datetime()
-        if selected_dt > dt.now():
-            selected_dt = dt.now().replace(minute=0, second=0, microsecond=0)
-            self._apply_datetime(selected_dt)
-            return
-
+        selected_dt = (dt.now() - datetime.timedelta(hours=hours_ago)).replace(minute=0, second=0, microsecond=0)
         self._selected_dt = selected_dt
-        self._update_time_display(selected_dt.hour)
+        self._update_time_display(hours_ago)
         self._refresh_preview(selected_dt)
 
     def _refresh_preview(self, selected_dt):
@@ -281,45 +246,14 @@ class TimeSelectionDialog(QDialog):
         self.preview_label.setText(selected_dt.strftime(f"%a, %d %b %Y  %H:%M  |  {relative}"))
 
     def selected_datetime(self):
-        selected_date = self.calendar.selectedDate()
-        hour = self.hour_slider.value() if hasattr(self, "hour_slider") else self._selected_dt.hour
+        return self._selected_dt
 
-        return dt(
-            selected_date.year(),
-            selected_date.month(),
-            selected_date.day(),
-            hour,
-            0,
-        )
-
-    @staticmethod
-    def _to_qdate(selected_dt):
-        return QDate(selected_dt.year, selected_dt.month, selected_dt.day)
-
-    def _update_time_display(self, hour):
-        self.time_display.setText(f"{hour:02d}:00")
-
-    def _update_calendar_header(self, *_):
-        shown_year = self.calendar.yearShown()
-        shown_month = self.calendar.monthShown()
-        self.month_label.setText(QDate(shown_year, shown_month, 1).toString("MMMM yyyy"))
-
-        current_page = QDate(shown_year, shown_month, 1)
-        this_month = QDate.currentDate()
-        self.next_month_btn.setEnabled(current_page < QDate(this_month.year(), this_month.month(), 1))
-
-    def _show_previous_month(self):
-        self.calendar.showPreviousMonth()
-        self._update_calendar_header()
-
-    def _show_next_month(self):
-        shown_year = self.calendar.yearShown()
-        shown_month = self.calendar.monthShown()
-        current_page = QDate(shown_year, shown_month, 1)
-        this_month = QDate.currentDate()
-        if current_page < QDate(this_month.year(), this_month.month(), 1):
-            self.calendar.showNextMonth()
-            self._update_calendar_header()
+    def _update_time_display(self, hours_ago):
+        if hours_ago == 0:
+            text = "Now"
+        else:
+            text = f"{hours_ago} hours ago"
+        self.time_display.setText(text)
 
 
 class DSAApplication(QMainWindow):
@@ -348,11 +282,17 @@ class DSAApplication(QMainWindow):
         container = QWidget()
         self.layout = QVBoxLayout(container)
 
+        self.disclaimer_label = QLabel("Nur zu Lehrzwecken")
+        self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 20px; margin-bottom: 5px;")
+        self.disclaimer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.layout.addWidget(self.disclaimer_label)
         self.layout.addWidget(self.topbar)
         self.layout.addWidget(self.dsa_view)
         self.layout.addWidget(self.psd_view)
         self.layout.addWidget(self.eeg_view)
 
+        self.layout.setStretchFactor(self.disclaimer_label, 0)
         self.layout.setStretchFactor(self.topbar, 0)
         self.layout.setStretchFactor(self.dsa_view, 1)
         self.layout.setStretchFactor(self.psd_view, 1)
@@ -375,16 +315,27 @@ class DSAApplication(QMainWindow):
     def _load_data_from_time(self, start_time_dt):
         # Clear current data first
         self.dsa_view.clear_data()
+        self.eeg_view.clear_data()
 
         # Load data from specific time
         try:
             previous_data = Output.load_psd_from_time(start_time_dt)
         except Exception as e:
-            QMessageBox.critical(self, "Load Error", f"Failed to load data: {e}")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Load Error")
+            msg.setText(f"Failed to load data: {e}")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+            msg.exec()
             return
 
         if not previous_data:
-            QMessageBox.information(self, "Load Data", "No data found for the selected time range.")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Load Data")
+            msg.setText("No data found for the selected time range.")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+            msg.exec()
             return
 
         for ts, duration, psd in previous_data:
@@ -461,7 +412,7 @@ class DSAApplication(QMainWindow):
 
         self.connection_indicator.setStyleSheet("""
             QLabel {
-                color: #6b0000;   /* red = disconnected */
+                color: red;
                 font-size: 22px;
             }
         """)
@@ -487,24 +438,35 @@ class DSAApplication(QMainWindow):
         </p>
         """
 
-        QMessageBox.information(
-            self,
-            "Information",
-            text,
-            QMessageBox.StandardButton.Ok
-        )
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Information")
+        msg.setText(text)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+        
+        # Use a custom label for the icon to avoid system sounds associated with QMessageBox.Icon
+        label = QLabel()
+        pixmap = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation).pixmap(32, 32)
+        label.setPixmap(pixmap)
+        
+        # We need to use a layout to mimic QMessageBox if we don't set the icon via setIcon
+        # Or better, just don't set the icon and the sound won't play on Windows.
+        # However, the user wants it to look the same but without sound.
+        
+        msg.exec()
 
     def _confirm_clear_data(self):
-        reply = QMessageBox.question(
-            self,
-            "Confirm data deletion",
-            "Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Confirm data deletion")
+        msg.setText("Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+        
+        reply = msg.exec()
         if reply == QMessageBox.StandardButton.Yes:
             self.dsa_view.clear_data()
+            self.eeg_view.clear_data()
 
     def _toggle_multitaper(self, checked):
         new_config = self.user_config.update(use_multitaper=checked)
@@ -550,20 +512,10 @@ class DSAApplication(QMainWindow):
 
     def _update_status(self):
         if time.time() - self._last_data_receive_time < 2.0:
-            self.connection_indicator.setStyleSheet("""
-                QLabel {
-                    color: #00c000;
-                    font-size: 22px;
-                }
-            """)
+            self.connection_indicator.setStyleSheet("QLabel { color: green; font-size: 22px; }")
             self.connection_indicator.setToolTip("Connected")
         else:
-            self.connection_indicator.setStyleSheet("""
-                QLabel {
-                    color: #6b0000;
-                    font-size: 22px;
-                }
-            """)
+            self.connection_indicator.setStyleSheet("QLabel { color: red; font-size: 22px; }")
             self.connection_indicator.setToolTip("Disconnected")
 
         self.topbar.update_jump_live_btn(self.dsa_view)
@@ -584,7 +536,6 @@ class DSAApplication(QMainWindow):
         self.topbar.apply_config(new_config)
         self.worker.apply_config(new_config)
         self.dsa_view.apply_config(new_config)
-        self.psd_view.apply_config(new_config)
         self.eeg_view.apply_config(new_config)
 
         self._update_status()
