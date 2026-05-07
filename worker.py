@@ -47,7 +47,7 @@ class ProcessingWorker(QObject):
                 time.sleep(0.5)
                 continue
 
-            samples = self.stream.read_samples()
+            samples = self.stream.read_lsl_samples()
             method = 'multitaper' if self.user_config.use_multitaper else 'welch'
             dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples, method=method)
 

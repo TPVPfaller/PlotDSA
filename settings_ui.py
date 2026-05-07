@@ -30,14 +30,32 @@ class TopBar(QWidget):
 
         # --- Pan Left Button ---
         self.left_btn = QPushButton()
-        self.left_btn.setMinimumHeight(40)
+        self.left_btn.setMinimumHeight(35)
+        self.left_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        font-size: {config.FONT_SIZE}px;
+                        background: palette(button);
+                        color: palette(button-text);
+                    }}
+                """)
         self.left_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
         self.left_btn.clicked.connect(lambda: self._pan(-1))
         layout.addWidget(self.left_btn)
 
         # --- Pan Right Button ---
         self.right_btn = QPushButton()
-        self.right_btn.setMinimumHeight(40)
+        self.right_btn.setMinimumHeight(35)
+        self.right_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        font-size: {config.FONT_SIZE}px;
+                        background: palette(button);
+                        color: palette(button-text);
+                    }}
+                """)
         self.right_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
         self.right_btn.clicked.connect(lambda: self._pan(1))
         layout.addWidget(self.right_btn)
@@ -56,14 +74,15 @@ class TopBar(QWidget):
 
         # --- Live button ---
         self.live_btn = QPushButton("▶ Live")
-        self.live_btn.setMinimumHeight(40)
+        self.live_btn.setMinimumHeight(35)
         self.live_btn.setMinimumWidth(70)
         self.live_btn.setStyleSheet(f"""
             QPushButton {{
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-size: {config.FONT_SIZE}px;
-                color: white;
+                background: palette(button);
+                color: palette(button-text);
             }}
         """)
         policy = self.live_btn.sizePolicy()
@@ -79,19 +98,28 @@ class TopBar(QWidget):
                         border-radius: 6px;
                         padding: 8px 12px;
                         font-size: {config.FONT_SIZE}px;
-                        color: white;
+                        background: palette(button);
+                        color: palette(button-text);
                     }}
                 """)
-        self.calibrate_btn.setMinimumHeight(40)
+        self.calibrate_btn.setMinimumHeight(35)
         self.calibrate_btn.clicked.connect(self.on_calibrate)
         layout.addWidget(self.calibrate_btn)
 
-        self.calibrate_btn = QPushButton()
-        self.calibrate_btn.setIcon(QIcon("reset_icon.png"))
-        self.calibrate_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
-        self.calibrate_btn.setMinimumHeight(40)
-        self.calibrate_btn.clicked.connect(self._reset_calibration)
-        layout.addWidget(self.calibrate_btn)
+        self.reset_btn = QPushButton()
+        self.reset_btn.setIcon(QIcon("reset_icon.png"))
+        self.reset_btn.setStyleSheet(f"""
+                            QPushButton {{
+                                border-radius: 6px;
+                                padding: 8px 12px;
+                                font-size: {config.FONT_SIZE}px;
+                                background: palette(button);
+                                color: palette(button-text);
+                            }}
+                        """)
+        self.reset_btn.setMinimumHeight(35)
+        self.reset_btn.clicked.connect(self._reset_calibration)
+        layout.addWidget(self.reset_btn)
 
     # ------------------ New actions ------------------ #
     def _reset_calibration(self):
@@ -100,7 +128,7 @@ class TopBar(QWidget):
 
     def _pan(self, direction: int):
         """direction: -1 = left, +1 = right"""
-        step = 0.25 # percent of display width
+        step = 0.27 # percent of display width
         self.on_pan(direction * step)
 
     def _zoom_changed(self, value):
@@ -249,12 +277,12 @@ class SettingsDialog(QDialog):
 
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
-        reset_btn.setMinimumHeight(50)
+        reset_btn.setMinimumHeight(35)
         reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         reset_btn.clicked.connect(self._reset_to_defaults)
 
         apply_btn = QPushButton("Apply and Close")
-        apply_btn.setMinimumHeight(50)
+        apply_btn.setMinimumHeight(35)
         apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         apply_btn.clicked.connect(self._apply)
 
@@ -272,13 +300,14 @@ class SettingsDialog(QDialog):
         main_layout.addWidget(scroll)
 
     def _reset_to_defaults(self):
-        resp = QMessageBox.question(
-            self,
-            "Reset Settings",
-            "Reset all settings to default values?\n(Changes are not saved until you click 'Apply and Close'.)",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Reset Settings")
+        msg.setText("Reset all settings to default values?\n(Changes are not saved until you click 'Apply and Close'.)")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+        
+        resp = msg.exec()
         if resp != QMessageBox.Yes:
             return
 
@@ -315,7 +344,12 @@ class SettingsDialog(QDialog):
             self.on_config_change(new_config)
             self.accept()
         except ValueError as e:
-            QMessageBox.critical(self, "Invalid Configuration", str(e))
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Invalid Configuration")
+            msg.setText(str(e))
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+            msg.exec()
 
 
 class EEGSettingsDialog(QDialog):
@@ -332,7 +366,7 @@ class EEGSettingsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        title = QLabel("EEG sweep speed")
+        title = QLabel("Select EEG sweep speed:")
         title.setStyleSheet(f"font-size: {config.FONT_SIZE + 1}px; font-weight: 600;")
         layout.addWidget(title)
 
@@ -340,7 +374,8 @@ class EEGSettingsDialog(QDialog):
         for value in config.EEG_MM_PER_SECOND_OPTIONS:
             label = f"{value:g} mm/s"
             button = QRadioButton(label)
-            button.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+            button.setStyleSheet(f"padding: 0px 12px;"
+                                 f"font-size: {config.FONT_SIZE}px;")
             self.button_group.addButton(button)
             self.speed_buttons[value] = button
             layout.addWidget(button)
@@ -355,7 +390,7 @@ class EEGSettingsDialog(QDialog):
         button_row.setSpacing(10)
 
         reset_btn = QPushButton("Reset to Default")
-        reset_btn.setMinimumHeight(44)
+        reset_btn.setMinimumHeight(35)
         reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         reset_btn.clicked.connect(self._reset_to_default)
         button_row.addWidget(reset_btn)
@@ -363,7 +398,7 @@ class EEGSettingsDialog(QDialog):
         button_row.addStretch(1)
 
         apply_btn = QPushButton("Apply and Close")
-        apply_btn.setMinimumHeight(44)
+        apply_btn.setMinimumHeight(35)
         apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         apply_btn.clicked.connect(self._apply)
         button_row.addWidget(apply_btn)
@@ -382,7 +417,12 @@ class EEGSettingsDialog(QDialog):
         )
 
         if selected_value is None:
-            QMessageBox.critical(self, "Invalid Configuration", "Select an EEG sweep speed.")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Invalid Configuration")
+            msg.setText("Select an EEG sweep speed.")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+            msg.exec()
             return
 
         try:
@@ -390,4 +430,9 @@ class EEGSettingsDialog(QDialog):
             self.on_config_change(new_config)
             self.accept()
         except ValueError as e:
-            QMessageBox.critical(self, "Invalid Configuration", str(e))
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Invalid Configuration")
+            msg.setText(str(e))
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+            msg.exec()

@@ -1,6 +1,7 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 from main import DSAApplication, DSAView, PSDView, EEGView, SettingsDialog
+from config import UserConfig
 
 import sys
 import time
@@ -35,7 +36,13 @@ def test_initial_ui_state(dsa_app):
     # TopBar widgets exist
     assert hasattr(dsa_app.topbar, "live_btn")
     assert hasattr(dsa_app.topbar, "zoom_slider")
-    assert hasattr(dsa_app.topbar, "norm_checkbox")
+    assert hasattr(dsa_app.topbar, "calibrate_btn")
+
+
+def test_dsa_colorbar_buttons_are_attached_to_colorbar(dsa_app):
+    """Color-bar buttons should be mounted under the color bar item so they render."""
+    assert dsa_app.dsa_view.max_proxy.parent() is dsa_app.dsa_view.viewport()
+    assert dsa_app.dsa_view.min_proxy.parent() is dsa_app.dsa_view.viewport()
 
 
 def test_menu_toggle_views(qtbot, dsa_app):
@@ -54,13 +61,6 @@ def test_menu_toggle_views(qtbot, dsa_app):
     assert dsa_app.dsa_view.isVisible() is True
 
 
-def test_topbar_norm_checkbox_updates_config(qtbot, dsa_app):
-    """Toggling the PSD normalization checkbox should update config."""
-    checkbox = dsa_app.topbar.norm_checkbox
-    initial = dsa_app.user_config.normalize_psd
-    checkbox.setChecked(not initial)
-    time.sleep(0.1)  # Allow signal to propagate
-    assert dsa_app.user_config.normalize_psd != initial
 
 
 def test_settings_dialog_sliders_apply(qtbot, dsa_app):
@@ -83,7 +83,8 @@ def test_settings_dialog_sliders_apply(qtbot, dsa_app):
 
 def test_eeg_view_append_sample(qtbot):
     """Appending a sample adds it to pending queue and eventually renders."""
-    view = EEGView()
+    conf = UserConfig()
+    view = EEGView(conf)
     qtbot.addWidget(view)
     val = 42.0
     view.append_sample(val)

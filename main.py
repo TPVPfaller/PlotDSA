@@ -264,6 +264,7 @@ class DSAApplication(QMainWindow):
 
         self.setWindowTitle("EEG Density Spectral Array")
         self.resize(1000, 650)
+        self.setMinimumSize(config.MIN_WINDOW_WIDTH, config.MIN_WINDOW_HEIGHT)
 
         self.user_config = UserConfig()
         self._init_ui()
@@ -274,16 +275,17 @@ class DSAApplication(QMainWindow):
     def _init_ui(self):
         self.dsa_view = DSAView(self.user_config, self._on_config_change, self._on_zoom_change)
         self.psd_view = PSDView(self.user_config)
-        self.eeg_view = EEGView(self.user_config)
+        self.eeg_view = EEGView(self.user_config, self._on_config_change)
 
         self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan, self.dsa_view.calibrate)
         self._create_menu()
 
         container = QWidget()
         self.layout = QVBoxLayout(container)
+        self.layout.setSpacing(0)
 
-        self.disclaimer_label = QLabel("Nur zu Lehrzwecken")
-        self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 20px; margin-bottom: 5px;")
+        self.disclaimer_label = QLabel("Nur zu Lehrzwecken!")
+        self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 22px; margin-bottom: -5px; margin-top: -10px")
         self.disclaimer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.layout.addWidget(self.disclaimer_label)
@@ -359,7 +361,7 @@ class DSAApplication(QMainWindow):
         self.thread.start()
 
     def _init_timers(self):
-        self._last_data_receive_time = time.time()
+        self._last_data_receive_time = time.time() - 2.0
 
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self._update_status)

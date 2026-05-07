@@ -48,37 +48,33 @@ class DSACalculator:
         """
         TW = 1
         K = 3  # number of tapers
-        nw = config.N_PER_SEGMENT # number of samples per window
+        nw = config.N_PER_SEGMENT # number of samples per window (800 for 400hz)
         N = len(eeg_values)//config.N_PER_SEGMENT # number of windows
 
         eeg_values = eeg_values[:(N * nw)] # cut off extra samples
         eeg_values = np.reshape(eeg_values, (N, nw)) # reshape to (N, nw)
-        
+
         fs = config.SAMPLE_RATE_HZ
 
-        # Generate DPSS tapers
-        tapers, eigvals = dpss(nw, NW=TW, Kmax=K, sym=True, return_ratios=True) # (K, nw)
-        
-        spect = np.zeros((N, nw//2+1)) # N//2+1 because fft output is Hermitian-symmetric
+        tapers, _ = dpss(nw, NW=TW, Kmax=K, return_ratios=True) # (K, nw)
+        spect = np.zeros((N, nw)) # N//2+1 because fft output is Hermitian-symmetric
 
-        # iterate over windows
         for i in range(N):
-            # Apply tapers to the current window
             # tapers is (K, nw), eeg_values[i] is (nw,)
             window_data = eeg_values[i]
             tapered_data = tapers * window_data # Broadcasting (K, nw) * (nw,) -> (K, nw)
             
-            fourier = np.fft.rfft(tapered_data, n=nw, axis=1) # (K, nw//2+1)
-            
+            fourier = np.fft.fft(tapered_data, n=nw, axis=1) # shape: (K, nw//2+1)
+
             # Power per taper
-            power = (np.abs(fourier) ** 2) / fs 
-            
+            power = (np.abs(fourier) ** 2) / fs
+
             # For rfft, we need to double the power for all bins except DC and Nyquist if we want one-sided PSD
             power[:, 1:-1] *= 2
             
             # Average across tapers
             spect[i] = np.mean(power, axis=0)
-            
+
         # Average across windows
         return np.mean(spect, axis=0)
 
@@ -89,20 +85,21 @@ class DSACalculator:
             return None, None
 
         # Apply FIR filters
-        filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
+        #filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
 
         if method == 'multitaper':
-            psd = self.multitaper_method(filtered)
+            psd = self.multitaper_method(eeg_values)
             if psd is None:
                 return np.full(len(config.FREQ_BINS), np.nan, np.float32)
         else:
             _, psd = welch(
-                filtered,
+                eeg_values,
                 fs=config.SAMPLE_RATE_HZ,
                 nperseg=config.N_PER_SEGMENT,
-                noverlap=None, # TODO: If None then overlap is 50%
+                noverlap=None, # If None then overlap is 50%
                 return_onesided=True
             )
+        psd = psd[:251]
         psd = psd[config.FREQ_MASK]
 
         if not np.all(psd):

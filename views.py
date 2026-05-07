@@ -7,21 +7,70 @@ from pyqtgraph import ColorBarItem, GridItem
 from PySide6.QtCore import Qt, QEvent, QTimer
 import time
 
-
+import math
 from buffers import DSABuffer
 import config
 
 
 # ------------------ DSA View ------------------ #
+class FrequencyAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_freq = None
+
+    def set_max_freq(self, max_f):
+        self.max_freq = float(max_f)
+        self.update()
+
+    def tickValues(self, minVal, maxVal, size):
+        ticks = super().tickValues(minVal, maxVal, size)
+
+        if self.max_freq is None or not ticks:
+            return ticks
+
+        spacing = 5.0
+
+        # Stable major ticks
+        major_ticks = []
+
+        start = math.ceil(minVal / spacing) * spacing
+
+        v = start
+        while v < maxVal:
+            major_ticks.append(float(v))
+            v += spacing
+
+        # Remove tick near max_freq
+        major_ticks = [
+            t for t in major_ticks
+            if abs(t - self.max_freq) > spacing * 0.7
+        ]
+
+        # Always add max_freq
+        major_ticks.append(float(self.max_freq))
+
+        # Ensure sorted unique finite values
+        major_ticks = sorted(set(
+            t for t in major_ticks
+            if math.isfinite(t)
+        ))
+
+        # Replace ONLY major ticks
+        ticks[0] = (spacing, major_ticks)
+
+        return ticks
+
 class DSAView(pg.GraphicsLayoutWidget):
     """Dynamic Spectrum Analysis display with live/pan and pinch-zoom support."""
 
     def __init__(self, user_config, on_config_change, on_zoom_change):
         super().__init__()
+
         self.user_config = user_config
         self.on_config_change = on_config_change
         self.on_zoom_change = on_zoom_change
         self.dsa_buffer = DSABuffer()
+        self.setMinimumHeight(config.MIN_DSA_HEIGHT)
         self._init_parameters()
         self._init_plot()
         self._init_colormap()
@@ -46,17 +95,94 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def _init_plot(self):
         self.time_axis = pg.DateAxisItem("bottom")
-        self.plot = self.addPlot(row=0, col=0, axisItems={"bottom": self.time_axis})
+        self.freq_axis = FrequencyAxis("left")
+        self.plot = self.addPlot(row=0, col=0, axisItems={"bottom": self.time_axis, "left": self.freq_axis})
         self.plot.setLabel("left", "Frequency", units="Hz")
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.showGrid(x=False, y=False)
         self.plot.invertY(False)
         self.plot.setMouseEnabled(x=False, y=False)
-        self.plot.setYRange(config.LOWEST_FREQ_HZ, self.user_config.max_freq_hz, padding=0)
-
+        self._update_y_axis()
+        self.plot.setContentsMargins(20, 20, 0, 0)
         self.image = pg.ImageItem(axisOrder='col-major', interpolation="linear")
         self.plot.addItem(self.image)
+
+        self._init_freq_buttons()
+
+    def _update_y_axis(self):
+        max_f = self.user_config.max_freq_hz
+        self.plot.setYRange(config.LOWEST_FREQ_HZ, max_f, padding=0)
+        self.freq_axis.set_max_freq(max_f)
+
+    def _init_freq_buttons(self):
+        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
+
+        # Create a container widget for the buttons
+        self.btn_container = QFrame()
+        self.btn_container.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(self.btn_container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        self.btn_plus = QPushButton("+")
+        self.btn_minus = QPushButton("-")
+
+        # Explicitly set parent to ensure they aren't garbage collected
+        # though QGraphicsProxyWidget should handle it.
+        self.btn_plus.setParent(self.btn_container)
+        self.btn_minus.setParent(self.btn_container)
+
+        for btn in [self.btn_plus, self.btn_minus]:
+            self._style_adjust_button(btn)
+            layout.addWidget(btn)
+
+        self.btn_plus.clicked.connect(lambda: self._adjust_max_freq(1))
+        self.btn_minus.clicked.connect(lambda: self._adjust_max_freq(-1))
+
+        # Add the container to the plot using a proxy
+        self.proxy = QGraphicsProxyWidget()
+        self.proxy.setWidget(self.btn_container)
+        self.proxy.setParentItem(self.plot.vb)
+        self.plot.vb.setFlag(pg.GraphicsWidget.ItemClipsChildrenToShape, False)
+
+        # Position it at the top-left of the viewbox
+        # We'll update the position when the viewbox is resized
+        self.plot.vb.sigResized.connect(self._update_button_pos)
+        self._update_button_pos()
+
+    def _update_button_pos(self):
+        # Position at the left of the Y-axis
+        # The ViewBox (vb) is the plotting area.
+        # To move buttons to the left of it (where the Y-axis is), we use a negative X.
+        # -45 seems like a good offset to clear the axis labels/ticks.
+        self.proxy.setPos(-52, -16)
+        self.proxy.setZValue(100)  # Ensure it's above other elements
+
+    def _style_adjust_button(self, button):
+        button.setFixedSize(32, 32)
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(60, 60, 60, 150);
+                color: white;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 22px;
+            }
+            QPushButton:hover {
+                background-color: rgba(80, 80, 80, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(100, 100, 100, 255);
+            }
+        """)
+
+    def _adjust_max_freq(self, delta):
+        new_max_freq = self.user_config.max_freq_hz + delta
+        min_f, max_f = config.MAX_FREQ_HZ_BOUNDS
+        if min_f <= new_max_freq <= max_f:
+            new_config = self.user_config.update(max_freq_hz=new_max_freq)
+            self.on_config_change(new_config)
 
     def _init_colormap(self):
         colors = [
@@ -75,6 +201,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.image.setLookupTable(self.lut)
 
     def _init_colorbar(self):
+        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
+
         self.colorbar = ColorBarItem(
             values=(self.user_config.psd_db_min, self.user_config.psd_db_max),
             colorMap=self.cmap,
@@ -82,9 +210,76 @@ class DSAView(pg.GraphicsLayoutWidget):
             interactive=False,
         )
         self.colorbar.setImageItem(self.image)
+        self.colorbar.setContentsMargins(0,24,0,24)
         self.addItem(self.colorbar, row=0, col=1)
         self.ci.layout.setColumnStretchFactor(0, 10)
         self.ci.layout.setColumnStretchFactor(1, 1)
+        self.ci.layout.setContentsMargins(0, 0, 40, 0)
+
+        self.colorbar_max_btn_proxy = self._create_colorbar_button_group(
+            plus_handler=lambda: self._adjust_psd_level("psd_db_max", 1),
+            minus_handler=lambda: self._adjust_psd_level("psd_db_max", -1),
+        )
+        self.colorbar_min_btn_proxy = self._create_colorbar_button_group(
+            plus_handler=lambda: self._adjust_psd_level("psd_db_min", 1),
+            minus_handler=lambda: self._adjust_psd_level("psd_db_min", -1),
+        )
+        QTimer.singleShot(0, self._position_colorbar_buttons)
+
+    def _create_colorbar_button_group(self, plus_handler, minus_handler):
+        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
+
+        container = QFrame()
+        container.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        plus_button = QPushButton("+")
+        minus_button = QPushButton("-")
+        self._style_adjust_button(plus_button)
+        self._style_adjust_button(minus_button)
+        plus_button.clicked.connect(plus_handler)
+        minus_button.clicked.connect(minus_handler)
+        layout.addWidget(plus_button)
+        layout.addWidget(minus_button)
+
+        proxy = QGraphicsProxyWidget(self.colorbar)
+        proxy.setWidget(container)
+        proxy.setZValue(100)
+        return proxy
+
+    def _position_colorbar_buttons(self):
+        if not hasattr(self, "colorbar_max_btn_proxy") or not hasattr(self, "colorbar_min_btn_proxy"):
+            return
+
+        rect = self.colorbar.boundingRect()
+        top_size = self.colorbar_max_btn_proxy.boundingRect()
+        bottom_size = self.colorbar_min_btn_proxy.boundingRect()
+        x_pos = max(0, rect.width() - max(top_size.width(), bottom_size.width()) + 12)
+
+        self.colorbar_max_btn_proxy.setPos(x_pos, 5)
+        self.colorbar_min_btn_proxy.setPos(x_pos, max(0, rect.height() - bottom_size.height())-8)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_colorbar_buttons()
+
+    def _adjust_psd_level(self, field_name, delta):
+        current_value = getattr(self.user_config, field_name)
+        min_bound, max_bound = getattr(config, f"{field_name.upper()}_BOUNDS")
+        new_value = current_value + delta
+
+        if not (min_bound <= new_value <= max_bound):
+            return
+
+        updated_fields = {field_name: new_value}
+        if field_name == "psd_db_min" and new_value >= self.user_config.psd_db_max:
+            return
+        if field_name == "psd_db_max" and new_value <= self.user_config.psd_db_min:
+            return
+
+        self.on_config_change(self.user_config.update(**updated_fields))
 
     def _init_gestures(self):
         self.grabGesture(Qt.PinchGesture)
@@ -117,6 +312,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
             target_resolution=target_res
         )
+        print(actual_res)
         data = np.ascontiguousarray(self.dsa_rect)
         np.maximum(data, np.finfo(np.float32).eps, out=data)
         np.log10(data, out=data)
@@ -200,6 +396,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.update()
 
     # ------------------ Mouse & Gesture ------------------ #
+
     def mousePressEvent(self, ev):
         super().mousePressEvent(ev)
         if ev.isAccepted():
@@ -278,20 +475,23 @@ class DSAView(pg.GraphicsLayoutWidget):
         old_config = self.user_config
         self.user_config = new_config
         if new_config.max_freq_hz != old_config.max_freq_hz:
-            self.plot.setYRange(config.LOWEST_FREQ_HZ, self.user_config.max_freq_hz, padding=0)
             self.freq_bins = config.FREQ_BINS[(config.FREQ_BINS <= self.user_config.max_freq_hz)]
+            self._update_y_axis()
 
         self.update()
 
 
 
 class PSDView(pg.PlotWidget):
-    def __init__(self, user_config):
+    def __init__(self, user_config, on_config_change=None):
         super().__init__()
         self.user_config = user_config
+        self.on_config_change = on_config_change
 
         self.setLabel("bottom", "Frequency", units="Hz")
         self.setLabel("left", "Power", units="dB")
+        self.getPlotItem().setContentsMargins(10, 0, 0, 5)
+        self.setMinimumHeight(config.MIN_PSD_HEIGHT)
         self.setMenuEnabled(False)
         self.showGrid(x=True, y=True)
         self.setMouseEnabled(x=False, y=False)
@@ -299,15 +499,12 @@ class PSDView(pg.PlotWidget):
         self.curve = self.plot(pen=pg.mkPen("y", width=2), title="PSD")
 
         self.setInteractive(False)
-        self.setYRange(user_config.psd_db_min - 15, user_config.psd_db_max + 15)
+        self.setYRange(user_config.psd_db_min - 5, user_config.psd_db_max + 5)
 
     def update(self, psd):
-        self.setYRange(self.user_config.psd_db_min - 15, self.user_config.psd_db_max + 15)
         psd_db = 10 * np.log10(np.clip(psd, np.finfo(np.float32).eps, None))
         self.curve.setData(config.FREQ_BINS, psd_db)
 
-    def apply_config(self, user_config):
-        self.user_config = user_config
 
 
 # 7.5 mm/sekunde 15 mm/sekunde eeg view skalieren mit application window. 5 microvolt pro millimeter. 27 zoll pc. einstellung in system settings
@@ -316,12 +513,15 @@ class EEGView(pg.PlotWidget):
 
     RENDER_HZ = 20
 
-    def __init__(self, user_config):
+    def __init__(self, user_config, on_config_change=None):
         super().__init__()
         self.user_config = user_config
+        self.on_config_change = on_config_change
 
         # --- Plot setup ---
         self.setLabel("left", "EEG", units="µV")
+        self.getPlotItem().setContentsMargins(10, 10, 60, 3)
+        self.setMinimumHeight(config.MIN_EEG_HEIGHT)
         self.showGrid(x=False, y=False)
         self.grid = GridItem()
         self.addItem(self.grid)
@@ -340,26 +540,20 @@ class EEGView(pg.PlotWidget):
         self.setMouseEnabled(False, False)
         self.setInteractive(False)
 
-        self.nan_curve = self.plot(
-            pen=None,
-            symbol='o',
-            symbolBrush='r',  # fill color red
-            symbolSize=3,  # size
-            symbolPen=None
-        )
-
         self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
         self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
 
         # Sweep line
         self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
         self.addItem(self.update_line)
+        self._init_amplitude_buttons()
 
         # --- Buffer setup ---
         self.N = int(config.EEG_VIEW_WINDOW_SEC * config.SAMPLE_RATE_HZ)
 
         self.display = np.full(self.N, np.nan, dtype=np.float32)
         self.display_head = -1
+        self.history = deque(maxlen=5 * 60 * config.SAMPLE_RATE_HZ) # 5 minutes history
 
         self.x = np.linspace(
             0,
@@ -380,13 +574,81 @@ class EEGView(pg.PlotWidget):
 
         # --- View limits ---
         self.setXRange(0, config.EEG_VIEW_WINDOW_SEC, padding=0)
-        self.setYRange(-80, 80, padding=0)
+        self._apply_y_range()
 
         # --- Timer ---
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.PreciseTimer)
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
+
+    def _init_amplitude_buttons(self):
+        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout
+
+        self.amplitude_buttons = {}
+        self.amplitude_container = QFrame(self.viewport())
+        self.amplitude_container.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(self.amplitude_container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        for amplitude in (50, 75, 125):
+            button = QPushButton(str(amplitude))
+            button.setCheckable(True)
+            button.setFixedSize(40, 30)
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(60, 60, 60, 150);
+                    color: white;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: rgba(80, 80, 80, 200);
+                }
+                QPushButton:checked {
+                    background-color: rgba(0, 150, 220, 220);
+                }
+            """)
+            button.clicked.connect(lambda _, max_uv=amplitude: self._set_eeg_y_max(max_uv))
+            layout.addWidget(button)
+            self.amplitude_buttons[amplitude] = button
+
+        self.amplitude_container.raise_()
+        self._sync_amplitude_buttons()
+        self._update_amplitude_button_pos()
+
+    def _update_amplitude_button_pos(self):
+        if not hasattr(self, "amplitude_container"):
+            return
+
+        self.amplitude_container.adjustSize()
+        x = max(0, self.viewport().width() - self.amplitude_container.width() - 12)
+        self.amplitude_container.move(x, 8)
+
+    def _apply_y_range(self):
+        max_uv = self.user_config.eeg_uv_range_max
+        self.setYRange(-max_uv, max_uv, padding=0)
+
+    def _sync_amplitude_buttons(self):
+        selected = self.user_config.eeg_uv_range_max
+        for amplitude, button in self.amplitude_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(amplitude == selected)
+            button.blockSignals(False)
+
+    def _set_eeg_y_max(self, max_uv):
+        if max_uv == self.user_config.eeg_uv_range_max:
+            return
+
+        if self.on_config_change is None:
+            self.user_config = self.user_config.update(eeg_uv_range_max=max_uv)
+            self._apply_y_range()
+            self._sync_amplitude_buttons()
+            return
+
+        self.on_config_change(self.user_config.update(eeg_uv_range_max=max_uv))
 
 
     def showEvent(self, event):
@@ -424,44 +686,42 @@ class EEGView(pg.PlotWidget):
             return
 
         if new_N != self.N:
+            # 1. Preserve the relative position of the sweep line
             if self.display_head >= 0:
-                # 1. Unroll the existing circular buffer so the most recent sample is at the end.
-                unrolled = np.concatenate([
-                    self.display[self.display_head + 1:],
-                    self.display[:self.display_head + 1]
-                ])
-
-                # 2. Maintain temporal sweep line position (e.g., stay at 50% through the window)
                 old_ratio = (self.display_head + 1) / self.N
-                new_head = int(old_ratio * new_N) - 1
-                new_head = np.clip(new_head, -1, new_N - 1)
-
-                # 3. Create a fresh buffer and map samples relative to the new head.
-                new_display = np.full(new_N, np.nan, dtype=np.float32)
-
-                # How many samples can we carry over?
-                num_to_copy = min(self.N, new_N)
-                samples_to_copy = unrolled[-num_to_copy:]
-
-                # We place samples such that samples_to_copy[-1] lands at new_head.
-                start_idx = new_head - num_to_copy + 1
-                if start_idx >= 0:
-                    new_display[start_idx : new_head + 1] = samples_to_copy
-                else:
-                    # Wraps around the beginning of the circular buffer
-                    # Part 1: Fill from 0 to new_head
-                    new_display[0 : new_head + 1] = samples_to_copy[-(new_head + 1):]
-                    # Part 2: Fill the remainder at the end of the buffer
-                    rem = num_to_copy - (new_head + 1)
-                    new_display[-rem:] = samples_to_copy[:rem]
-
-                self.display_head = new_head
-                self._last_rendered_head = -1
-                self.display = new_display
             else:
-                self.display = np.full(new_N, np.nan, dtype=np.float32)
+                old_ratio = 0.0
 
+            new_head = int(old_ratio * new_N) - 1
+            new_head = np.clip(new_head, -1, new_N - 1)
+
+            # 2. Create fresh buffer
+            new_display = np.full(new_N, np.nan, dtype=np.float32)
+
+            # 3. Populate from history
+            if self.history:
+                h_list = list(self.history)
+                h_arr = np.array(h_list, dtype=np.float32)
+                M = len(h_arr)
+
+                # We want latest sample (h_arr[-1]) at new_display[new_head]
+                # We can fill up to new_N samples.
+                count = min(M, new_N)
+                to_copy = h_arr[-count:]
+
+                start_idx = (new_head - count + 1) % new_N
+
+                if start_idx + count <= new_N:
+                    new_display[start_idx : start_idx + count] = to_copy
+                else:
+                    first_part = new_N - start_idx
+                    new_display[start_idx:] = to_copy[:first_part]
+                    new_display[: count - first_part] = to_copy[first_part:]
+
+            self.display = new_display
+            self.display_head = new_head
             self.N = new_N
+            self._last_rendered_head = -1
             # Gap size (in samples)
             self.gap_samples = int(0.05 * self.N)
 
@@ -480,9 +740,22 @@ class EEGView(pg.PlotWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_time_scale()
+        self._update_amplitude_button_pos()
+
+    def clear_data(self):
+        self.history.clear()
+        self.display.fill(np.nan)
+        self.display_head = -1
+        self._pending.clear()
+        self._last_rendered_head = -1
+        self.update_line.setPos(0)
+        self.curve_a.clear()
+        self.curve_b.clear()
 
     def apply_config(self, user_config):
         self.user_config = user_config
+        self._apply_y_range()
+        self._sync_amplitude_buttons()
         self._update_time_scale()
 
     # ------------------------------------------------------------------
@@ -507,14 +780,12 @@ class EEGView(pg.PlotWidget):
         now = time.perf_counter()
         changed = False
 
-        # Mask where NaNs originally were
-        nan_mask = np.isnan(self.display)
-
         # --- Consume pending samples ---
         while self._pending and self._pending[0][0] <= now:
             _, v = self._pending.popleft()
             self.display_head = (self.display_head + 1) % self.N
             self.display[self.display_head] = v
+            self.history.append(v)
             changed = True
 
         # --- Interpolated head ---
@@ -577,13 +848,3 @@ class EEGView(pg.PlotWidget):
                 self.display[gap_end: head + 1],
             )
             self.curve_b.clear()
-
-        nan_indices = np.where(nan_mask)[0]
-
-        if len(nan_indices) > 0:
-            self.nan_curve.setData(
-                self.x[nan_indices],
-                np.zeros_like(nan_indices, dtype=np.float32),
-            )
-        else:
-            self.nan_curve.clear()

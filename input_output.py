@@ -36,7 +36,7 @@ class EEGStream:
             print(f"LSL Connection error: {e}")
             self.receiving = False
 
-    def read_samples(self):
+    def read_lsl_samples(self):
         if not self.receiving or self._inlet is None:
             return []
 
@@ -48,11 +48,7 @@ class EEGStream:
             try:
                 timestamp, eeg_str = sample[0].split(",")
                 value = float(eeg_str)
-                try:
-                    timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
-                except ValueError:
-                    time_part = dt.strptime(timestamp, "%H:%M:%S.%f").time()
-                    timestamp = dt.combine(dt.now().date(), time_part)
+                timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
 
                 if not np.isfinite(value):
                     value = np.nan
@@ -81,29 +77,20 @@ class Output:
 
     @staticmethod
     def load_psd_from_time(start_time_dt):
-        """
-        Loads PSD data starting from a specific datetime.
-        Returns a list of (timestamp, duration, psd) tuples.
-        """
         threshold = start_time_dt
         loaded_data = []
+
         pattern = os.path.join(config.BASE_DIR, "dsa_*.csv")
-        filepaths = sorted(glob.glob(pattern))
-
-        for filepath in filepaths:
-            if not os.path.exists(filepath):
-                continue
-
-            filename = os.path.basename(filepath)
-            file_date = None
-            if filename.startswith("dsa_") and filename.endswith(".csv"):
-                date_part = filename[4:-4]
-                try:
-                    file_date = dt.strptime(date_part, "%Y-%m-%d").date()
-                except ValueError:
-                    file_date = None
-
+        for filepath in sorted(glob.glob(pattern)):
             try:
+                filename = os.path.basename(filepath)
+                file_date = None
+                try:
+                    if filename.startswith("dsa_"):
+                        file_date = dt.strptime(filename[4:-4], "%Y-%m-%d").date()
+                except ValueError:
+                    pass
+
                 with open(filepath, "r", newline="") as f:
                     reader = csv.reader(f)
                     header = next(reader, None)
@@ -111,43 +98,40 @@ class Output:
                         continue
 
                     has_duration = "duration" in header
-                    expected_cols = (2 if has_duration else 1) + len(config.FREQ_BINS)
-                    if len(header) != expected_cols:
+                    psd_offset = 2 if has_duration else 1
+                    if len(header) != psd_offset + len(config.FREQ_BINS):
                         continue
 
                     for row in reader:
                         if not row:
                             continue
                         try:
-                            ts_str = row[0]
+                            ts = row[0]
                             try:
-                                row_dt = dt.fromisoformat(ts_str)
+                                row_dt = dt.fromisoformat(ts)
                             except ValueError:
-                                time_part = dt.strptime(ts_str, "%H:%M:%S.%f").time()
                                 if file_date is None:
                                     continue
-                                row_dt = dt.combine(file_date, time_part)
+                                row_dt = dt.combine(
+                                    file_date,
+                                    dt.strptime(ts, "%H:%M:%S.%f").time()
+                                )
 
                             if row_dt < threshold:
                                 continue
 
-                            if has_duration:
-                                duration = float(row[1])
-                                psd_start_idx = 2
-                            else:
-                                duration = config.TIME_RESOLUTION
-                                psd_start_idx = 1
+                            duration = float(row[1]) if has_duration else config.TIME_RESOLUTION
 
-                            psd = []
-                            for val_str in row[psd_start_idx:]:
-                                if val_str == "" or val_str.lower() == "nan":
-                                    psd.append(np.nan)
-                                else:
-                                    psd.append(float(val_str))
+                            psd = np.fromiter(
+                                (float(v) if v and v.lower() != "nan" else np.nan for v in row[psd_offset:]),
+                                dtype=np.float32
+                            )
 
-                            loaded_data.append((row_dt.timestamp(), duration, np.array(psd, dtype=np.float32)))
+                            loaded_data.append((row_dt.timestamp(), duration, psd))
+
                         except (ValueError, IndexError):
                             continue
+
             except Exception as e:
                 print(f"Error loading {filepath}: {e}")
 
@@ -158,63 +142,53 @@ class Output:
     def save_psd_to_csv(timestamp, duration, psd):
         psd = np.asarray(psd).ravel()
 
-        if timestamp is None:
+        try:
+            ts_dt = (
+                dt.now() if timestamp is None else
+                timestamp if isinstance(timestamp, dt) else
+                dt.fromtimestamp(timestamp) if isinstance(timestamp, (int, float)) else
+                dt.fromisoformat(str(timestamp))
+            )
+        except ValueError:
             ts_dt = dt.now()
-        elif isinstance(timestamp, dt):
-            ts_dt = timestamp
-        elif isinstance(timestamp, (int, float)):
-            ts_dt = dt.fromtimestamp(timestamp)
-        else:
-            try:
-                ts_dt = dt.fromisoformat(str(timestamp))
-            except ValueError:
-                ts_dt = dt.now()
 
         ts_str = ts_dt.strftime("%H:%M:%S.%f")[:-3]
         filepath = Output._build_filename(config.BASE_DIR, ts_dt.timestamp())
-        directory = os.path.dirname(filepath)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory, exist_ok=True)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
         write_header = not os.path.exists(filepath) or os.path.getsize(filepath) == 0
-        existing_rows = []
-        timestamp_exists = False
-        truncated = False
+        existing_rows, timestamp_exists, truncated = [], False, False
 
         if not write_header:
             try:
                 with open(filepath, "r", newline="") as f:
                     reader = csv.reader(f)
                     header = next(reader, None)
-                    if header is None:
+
+                    if not header:
                         write_header = True
                     else:
-                        expected_cols = 2 + len(config.FREQ_BINS)
-                        if len(header) != expected_cols:
-                            raise ValueError(
-                                f"Existing CSV has {len(header)} columns but expected {expected_cols}. "
-                                "Frequency bins must remain identical across saves."
-                            )
+                        if len(header) != 2 + len(config.FREQ_BINS):
+                            raise ValueError("Frequency bins mismatch.")
 
                         for row in reader:
                             if not row:
                                 continue
-                            row_ts = row[0]
-                            if row_ts > ts_str:
+                            if row[0] > ts_str:
                                 truncated = True
                                 continue
                             existing_rows.append(row)
-                            if row_ts == ts_str:
+                            if row[0] == ts_str:
                                 timestamp_exists = True
+
             except FileNotFoundError:
-                print(f"File not found: {filepath} creating new file")
                 write_header = True
 
         if truncated:
             with open(filepath, "w", newline="") as f:
                 writer = csv.writer(f)
-                freq_headers = [f"f_{freq:.1f}_Hz" for freq in config.FREQ_BINS]
-                writer.writerow(["timestamp", "duration"] + freq_headers)
+                writer.writerow(["timestamp", "duration"] +
+                                [f"f_{f:.1f}_Hz" for f in config.FREQ_BINS])
                 writer.writerows(existing_rows)
             write_header = False
 
@@ -223,9 +197,12 @@ class Output:
 
         with open(filepath, "a", newline="") as f:
             writer = csv.writer(f)
-            if write_header:
-                freq_headers = [f"f_{freq:.1f}_Hz" for freq in config.FREQ_BINS]
-                writer.writerow(["timestamp", "duration"] + freq_headers)
 
-            row_values = [np.round(x, 4) if np.isfinite(x) else "nan" for x in psd]
-            writer.writerow([ts_str, f"{duration:.3f}"] + row_values)
+            if write_header:
+                writer.writerow(["timestamp", "duration"] +
+                                [f"f_{f:.1f}_Hz" for f in config.FREQ_BINS])
+
+            writer.writerow(
+                [ts_str, f"{int(duration)}"] +
+                [np.round(x, 4) if np.isfinite(x) else "nan" for x in psd]
+            )

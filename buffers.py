@@ -16,7 +16,7 @@ class DSABuffer:
     resolutions, then reconstructs NaN-padded views on demand.
     """
 
-    RESOLUTIONS = [1, 10, 40, 100, 300, 600]  # seconds per frame
+    RESOLUTIONS = [1, 10, 40]  # seconds per frame
 
     def __init__(self):
         self.max_minutes = config.DISPLAY_MINUTES_BOUNDS[1]
