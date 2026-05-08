@@ -55,7 +55,7 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
 
     def fake_get_dsa_columns(samples, method="multitaper"):
         worker.running = False
-        return [(123.0, np.array([1.0, 2.0], dtype=np.float32))], [0.1, 0.2]
+        return [(123.0, np.array([1.0, 2.0], dtype=np.float32))]
 
     worker.eeg_buffer.get_dsa_columns = fake_get_dsa_columns
     worker.new_samples.connect(emitted_samples.append)
@@ -63,7 +63,7 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
 
     worker.run()
 
-    assert emitted_samples == [[0.1, 0.2]]
+    assert emitted_samples == [[1.0]]
     assert len(emitted_columns) == 1
     assert emitted_columns[0][0] == 123.0
     assert emitted_columns[0][2] == 2

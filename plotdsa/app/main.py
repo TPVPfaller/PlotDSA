@@ -4,8 +4,6 @@ IEC 62304 – Class B
 EEG Density Spectral Array Viewer
 """
 
-from datetime import datetime as dt
-import datetime
 import sys
 import time
 
@@ -17,12 +15,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QMessageBox,
     QLabel,
-    QDialog,
-    QPushButton,
-    QHBoxLayout,
-    QDialogButtonBox,
-    QFrame,
-    QSlider,
 )
 from PySide6.QtCore import QThread, QTimer, Qt
 from PySide6.QtGui import QAction
@@ -33,7 +25,7 @@ if __package__ in (None, ""):
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from plotdsa.io.input_output import Output
+    from plotdsa.io.output import Output
     from plotdsa.config import UserConfig
     from plotdsa.ui.dsa_settings import SettingsDialog
     from plotdsa.ui.topbar import TopBar
@@ -42,7 +34,7 @@ if __package__ in (None, ""):
     from plotdsa.ui.views import DSAView, PSDView, EEGView
     from plotdsa import config
 else:
-    from ..io.input_output import Output
+    from ..io.output import Output
     from ..config import UserConfig
     from ..ui.dsa_settings import SettingsDialog
     from ..ui.topbar import TopBar

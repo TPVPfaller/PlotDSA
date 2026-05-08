@@ -4,7 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot
 from ..core.buffers import EEGBuffer
-from ..io.input_output import EEGStream, Output
+from ..io.output import Output
+from ..io.input import EEGStream
 from .. import config
 
 

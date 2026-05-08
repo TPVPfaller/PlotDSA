@@ -37,6 +37,8 @@ SETTINGS_GEAR_SVG = """
     </svg>
 """
 
+LEFT_AXIS_WIDTH = 45
+
 
 def create_settings_gear_icon(size=18):
     renderer = QSvgRenderer(QByteArray(SETTINGS_GEAR_SVG.encode("utf-8")))
@@ -48,6 +50,10 @@ def create_settings_gear_icon(size=18):
     painter.end()
 
     return QIcon(pixmap)
+
+
+def set_uniform_left_axis_width(plot_with_axis):
+    plot_with_axis.getAxis("left").setWidth(LEFT_AXIS_WIDTH)
 
 
 # ------------------ DSA View ------------------ #
@@ -137,13 +143,14 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.freq_axis = FrequencyAxis("left")
         self.plot = self.addPlot(row=0, col=0, axisItems={"bottom": self.time_axis, "left": self.freq_axis})
         self.plot.setLabel("left", "Frequency", units="Hz")
+        set_uniform_left_axis_width(self.plot)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
         self.plot.showGrid(x=False, y=False)
         self.plot.invertY(False)
         self.plot.setMouseEnabled(x=False, y=False)
         self._update_y_axis()
-        self.plot.setContentsMargins(20, 10, 0, 3)
+        self.plot.setContentsMargins(0, 10, 0, 0)
         self.image = pg.ImageItem(axisOrder='col-major', interpolation="linear")
         self.plot.addItem(self.image)
 
@@ -202,7 +209,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             interactive=False,
         )
         self.colorbar.setImageItem(self.image)
-        self.colorbar.setContentsMargins(0,24,0,24)
+        self.colorbar.setContentsMargins(0,24,10,24)
         self.addItem(self.colorbar, row=0, col=1)
 
 
@@ -601,7 +608,8 @@ class PSDView(pg.PlotWidget):
 
         self.setLabel("bottom", "Frequency", units="Hz")
         self.setLabel("left", "Power", units="dB")
-        self.getPlotItem().setContentsMargins(10, 0, 0, 5)
+        set_uniform_left_axis_width(self.plotItem)
+        self.getPlotItem().setContentsMargins(10, 10, 0, 5)
         self.setMinimumHeight(config.MIN_PSD_HEIGHT)
         self.setMenuEnabled(False)
         self.showGrid(x=True, y=True)
@@ -632,8 +640,9 @@ class EEGView(pg.PlotWidget):
         self.on_config_change = on_config_change
 
         # --- Plot setup ---
-        self.setLabel("left", "EEG", units="µV")
         self.getPlotItem().setContentsMargins(10, 10, 60, 3)
+        self.getPlotItem().setLabel("left", "EEG", units="µV")
+        set_uniform_left_axis_width(self.plotItem)
         self.setMinimumHeight(config.MIN_EEG_HEIGHT)
         self.showGrid(x=False, y=False)
         self.grid = GridItem()

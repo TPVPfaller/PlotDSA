@@ -30,7 +30,7 @@ def test_timestamp_fault_resets_buffer():
     # inject fault
     samples.append((start + datetime.timedelta(seconds=10), 10.0))
 
-    dsa_cols, raw = buffer.get_dsa_columns(samples)
+    dsa_cols = buffer.get_dsa_columns(samples)
 
     assert len(buffer.eeg_values) == 0
 
@@ -48,7 +48,7 @@ def test_eegbuffer_sliding_window_count():
 
     samples = list(zip(ts, sig))
 
-    out, _ = buf.get_dsa_columns(samples)
+    out = buf.get_dsa_columns(samples)
 
     expected = int((5 - window) / (window * (1 - overlap))) + 1
 
@@ -65,8 +65,8 @@ def test_eegbuffer_resets_on_gap():
 
     gap = [(t0 + datetime.timedelta(seconds=10), 1.0)]
 
-    out1, _ = buf.get_dsa_columns(good)
-    out2, _ = buf.get_dsa_columns(gap)
+    out1 = buf.get_dsa_columns(good)
+    out2 = buf.get_dsa_columns(gap)
 
     assert len(out2) == 0, "Gap must reset EEGBuffer"
 
@@ -80,7 +80,7 @@ def test_eegbuffer_resets_on_timestamp_gap():
     good_sample = (base, 10.0)
     bad_sample = (base + datetime.timedelta(seconds=1), 10.0)  # big gap
 
-    out, samples = buf.get_dsa_columns([good_sample, bad_sample])
+    out = buf.get_dsa_columns([good_sample, bad_sample])
 
     # Gap should cause reset → no DSA output
     assert len(out) == 0
@@ -98,7 +98,7 @@ def test_eegbuffer_produces_dsa_column():
         ts = base + datetime.timedelta(milliseconds=i * (1000 / sample_rate))
         data.append((ts, 1.0))
 
-    out, samples = buf.get_dsa_columns(data)
+    out = buf.get_dsa_columns(data)
 
     assert len(out) >= 1
 
@@ -122,8 +122,8 @@ def test_eegbuffer_accumulates_partial_window_across_calls():
     first_chunk = generate_samples(int(sample_rate), base)
     second_chunk = generate_samples(int(sample_rate), base + datetime.timedelta(seconds=1))
 
-    out1, _ = buf.get_dsa_columns(first_chunk)
-    out2, _ = buf.get_dsa_columns(second_chunk)
+    out1 = buf.get_dsa_columns(first_chunk)
+    out2 = buf.get_dsa_columns(second_chunk)
 
     assert out1 == []
     assert len(out2) == 1
@@ -143,11 +143,10 @@ def test_eegbuffer_jitter_within_dsa_tolerance_does_not_reset():
         samples.append((ts, 1.0))
         ts += nominal_step
 
-    out, raw = buf.get_dsa_columns(samples)
+    out = buf.get_dsa_columns(samples)
 
     assert len(out) == 1
     assert not any(np.isnan(value) for value in buf.eeg_values)
-    assert np.isnan(raw[50])
 
 
 def test_eegbuffer_high_overlap_uses_minimum_hop_of_one_sample():
@@ -155,7 +154,7 @@ def test_eegbuffer_high_overlap_uses_minimum_hop_of_one_sample():
     base = datetime.datetime.now()
     samples = generate_samples(int(2.0 * config.SAMPLE_RATE_HZ) + 3, base)
 
-    out, _ = buf.get_dsa_columns(samples)
+    out = buf.get_dsa_columns(samples)
 
     assert buf.hop_len == 5
     assert len(out) >= 1
@@ -165,8 +164,7 @@ def test_eegbuffer_drops_initial_nan_sample_without_crashing():
     buf = EEGBuffer(2.0, 0.0)
     base = datetime.datetime.now()
 
-    out, raw = buf.get_dsa_columns([(base, np.nan)])
+    out = buf.get_dsa_columns([(base, np.nan)])
 
     assert out == []
-    assert raw == [np.nan]
     assert buf.last_ts is None

@@ -62,12 +62,6 @@ def test_initial_ui_state(dsa_app):
     assert hasattr(dsa_app.topbar, "calibrate_btn")
 
 
-def test_dsa_colorbar_buttons_are_attached_to_colorbar(dsa_app):
-    """Color-bar buttons should be mounted under the color bar item so they render."""
-    assert dsa_app.dsa_view.colorbar_max_btn_proxy.parentItem() is dsa_app.dsa_view.colorbar
-    assert dsa_app.dsa_view.colorbar_min_btn_proxy.parentItem() is dsa_app.dsa_view.colorbar
-
-
 def test_menu_toggle_views(qtbot, dsa_app):
     """Toggle view visibility via menu actions."""
     dsa_app.action_show_psd.trigger()

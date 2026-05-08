@@ -2,7 +2,7 @@ import math
 
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
-    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QRadioButton, QButtonGroup
+    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics

@@ -166,11 +166,11 @@ class TimeSelectionDialog(QDialog):
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
         self.load_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
         self.load_button.setText("Load Data")
-        self.load_button.setMinimumHeight(60)
+        self.load_button.setMinimumHeight(40)
         self.load_button.setMinimumWidth(150)
 
         cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
-        cancel_button.setMinimumHeight(60)
+        cancel_button.setMinimumHeight(40)
         cancel_button.setMinimumWidth(150)
 
         button_box.accepted.connect(self.accept)

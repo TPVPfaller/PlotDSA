@@ -51,16 +51,6 @@ class TopBar(QWidget):
         self.right_btn.clicked.connect(lambda: self._pan(1))
         layout.addWidget(self.right_btn)
 
-        self.zoom_label = QLabel("Zoom:")
-        self.zoom_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
-        layout.addWidget(self.zoom_label)
-
-        self.zoom_slider = QSlider(Qt.Horizontal)
-        self.zoom_slider.setMinimum(1)
-        self.zoom_slider.setMaximum(1000)
-        self.zoom_slider.valueChanged.connect(self._zoom_changed)
-        layout.addWidget(self.zoom_slider)
-
         self.live_btn = self._create_button("\u25b6 Live")
         self.live_btn.setMinimumWidth(70)
         policy = self.live_btn.sizePolicy()
@@ -68,6 +58,39 @@ class TopBar(QWidget):
         self.live_btn.setSizePolicy(policy)
         self.live_btn.hide()
         layout.addWidget(self.live_btn)
+
+        self.zoom_label = QLabel("Zoom:")
+        self.zoom_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        layout.addWidget(self.zoom_label)
+
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setMinimum(1)
+        self.zoom_slider.setMaximum(1000)
+        self.zoom_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: palette(mid);
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: palette(highlight);
+                border-radius: 3px;
+            }
+            QSlider::add-page:horizontal {
+                background: palette(mid);
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                width: 20px;
+                height: 20px;
+                margin: -7px 0;
+                border-radius: 10px;
+                background: palette(window-text);
+                border: 1px solid palette(base);
+            }
+        """)
+        self.zoom_slider.valueChanged.connect(self._zoom_changed)
+        layout.addWidget(self.zoom_slider)
 
         self.calibrate_btn = self._create_button("Calibrate")
         self.calibrate_btn.clicked.connect(self.on_calibrate)
