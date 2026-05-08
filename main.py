@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QSlider,
-    QStyle,
 )
 from PySide6.QtCore import QThread, QTimer, Qt
 from PySide6.QtGui import QAction
@@ -196,28 +195,32 @@ class TimeSelectionDialog(QDialog):
         self._building_ui = False
 
     def _default_datetime(self):
-        return (dt.now() - datetime.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        return self._normalize_datetime(dt.now() - datetime.timedelta(hours=1))
 
     def _apply_preset(self, offset):
-        self._apply_datetime((dt.now() - offset).replace(minute=0, second=0, microsecond=0))
+        self._apply_datetime(dt.now() - offset)
 
-    def _apply_datetime(self, selected_dt):
-        now = dt.now()
-        # Limit to 24h ago
-        limit = now - datetime.timedelta(hours=24)
-        if selected_dt < limit:
-            selected_dt = limit
-        
-        normalized = min(selected_dt, now).replace(minute=0, second=0, microsecond=0)
-        self._selected_dt = normalized
+    def _normalize_datetime(self, value):
+        return value.replace(minute=0, second=0, microsecond=0)
 
-        # Calculate hours ago for the slider
-        diff = now - normalized
-        hours_ago = round(diff.total_seconds() / 3600)
-        
+    def _hours_ago(self, selected_dt, now):
+        return round((now - selected_dt).total_seconds() / 3600)
+
+    def _set_hours_ago(self, hours_ago):
         self.ago_slider.blockSignals(True)
         self.ago_slider.setValue(hours_ago)
         self.ago_slider.blockSignals(False)
+
+    def _apply_datetime(self, selected_dt):
+        now = dt.now()
+        limit = now - datetime.timedelta(hours=24)
+        if selected_dt < limit:
+            selected_dt = limit
+
+        normalized = self._normalize_datetime(min(selected_dt, now))
+        self._selected_dt = normalized
+        hours_ago = self._hours_ago(normalized, now)
+        self._set_hours_ago(hours_ago)
 
         self._update_time_display(hours_ago)
         self._refresh_preview(normalized)
@@ -226,7 +229,7 @@ class TimeSelectionDialog(QDialog):
         if self._building_ui:
             return
 
-        selected_dt = (dt.now() - datetime.timedelta(hours=hours_ago)).replace(minute=0, second=0, microsecond=0)
+        selected_dt = self._normalize_datetime(dt.now() - datetime.timedelta(hours=hours_ago))
         self._selected_dt = selected_dt
         self._update_time_display(hours_ago)
         self._refresh_preview(selected_dt)
@@ -315,38 +318,38 @@ class DSAApplication(QMainWindow):
             self._load_data_from_time(start_time)
 
     def _load_data_from_time(self, start_time_dt):
-        # Clear current data first
         self.dsa_view.clear_data()
         self.eeg_view.clear_data()
 
-        # Load data from specific time
         try:
             previous_data = Output.load_psd_from_time(start_time_dt)
         except Exception as e:
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Load Error")
-            msg.setText(f"Failed to load data: {e}")
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
-            msg.exec()
+            self._show_message("Load Error", f"Failed to load data: {e}")
             return
 
         if not previous_data:
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Load Data")
-            msg.setText("No data found for the selected time range.")
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
-            msg.exec()
+            self._show_message("Load Data", "No data found for the selected time range.")
             return
 
         for ts, duration, psd in previous_data:
-            steps = int(duration / config.TIME_RESOLUTION)
-            for i in range(steps):
-                self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
+            self._append_dsa_steps(ts, psd, int(duration / config.TIME_RESOLUTION))
 
         self.dsa_view.update()
         self.dsa_view.jump_to_live()
+
+    def _append_dsa_steps(self, ts, psd, steps):
+        for i in range(steps):
+            self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
+
+    def _show_message(self, title, text, buttons=QMessageBox.StandardButton.Ok, default_button=None):
+        msg = QMessageBox(self)
+        msg.setWindowTitle(title)
+        msg.setText(text)
+        msg.setStandardButtons(buttons)
+        if default_button is not None:
+            msg.setDefaultButton(default_button)
+        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+        return msg.exec()
 
 
     def _init_worker(self):
@@ -439,33 +442,15 @@ class DSAApplication(QMainWindow):
             - More info: <a href="https://github.com/TPVPfaller/PlotDSA">GitHub</a>
         </p>
         """
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Information")
-        msg.setText(text)
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
-        
-        # Use a custom label for the icon to avoid system sounds associated with QMessageBox.Icon
-        label = QLabel()
-        pixmap = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation).pixmap(32, 32)
-        label.setPixmap(pixmap)
-        
-        # We need to use a layout to mimic QMessageBox if we don't set the icon via setIcon
-        # Or better, just don't set the icon and the sound won't play on Windows.
-        # However, the user wants it to look the same but without sound.
-        
-        msg.exec()
+        self._show_message("Information", text)
 
     def _confirm_clear_data(self):
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Confirm data deletion")
-        msg.setText("Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.")
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setDefaultButton(QMessageBox.StandardButton.No)
-        msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
-        
-        reply = msg.exec()
+        reply = self._show_message(
+            "Confirm data deletion",
+            "Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.",
+            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            default_button=QMessageBox.StandardButton.No,
+        )
         if reply == QMessageBox.StandardButton.Yes:
             self.dsa_view.clear_data()
             self.eeg_view.clear_data()
@@ -496,8 +481,7 @@ class DSAApplication(QMainWindow):
         dialog.exec()
 
     def _on_new_dsa_column(self, ts, psd, steps):
-        for i in range(steps):
-            self.dsa_view.append(ts + i * config.TIME_RESOLUTION, psd)
+        self._append_dsa_steps(ts, psd, steps)
         self.dsa_view.update()
 
         if self.psd_view.isVisible():

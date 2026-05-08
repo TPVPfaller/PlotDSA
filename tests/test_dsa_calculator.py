@@ -3,6 +3,8 @@ from calculations import DSACalculator
 import config
 
 
+
+
 def generate_sine(freq, seconds, sr, noise=0.0):
     t = np.arange(0, seconds, 1 / sr)
     sig = np.sin(2 * np.pi * freq * t)
@@ -10,6 +12,16 @@ def generate_sine(freq, seconds, sr, noise=0.0):
         sig += np.random.normal(0, noise, size=len(sig))
     return sig
 
+def test_multitaper():
+    calc = DSACalculator(window_sec=2)
+    # TODO: read data from file Entropy_data/JSMF_001_filtered_emergence.csv and
+    #  save result in tests/expected_multitaper.csv if it doesn't exist, else compare output with expected.
+
+
+def test_welch():
+    calc = DSACalculator(window_sec=2)
+    # TODO: read data from file Entropy_data/JSMF_001_filtered_emergence.csv and
+    #  save result in tests/expected_welch.csv if it doesn't exist, else compare output with expected.
 
 def test_psd_returns_correct_frequency_range():
     calc = DSACalculator(window_sec=4)

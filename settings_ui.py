@@ -1,19 +1,18 @@
-import time
 import math
-import numpy as np
 
 from PySide6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QScrollArea, QHBoxLayout, QPushButton, QSlider,
-    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QStyle, QRadioButton, QButtonGroup
+    QLabel, QGridLayout, QFrame, QSizePolicy, QMessageBox, QRadioButton, QButtonGroup
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontMetrics, QIcon
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap, QPolygon
 import config
-from config import PSD_DB_MAX
 
 
 # ------------------ TopBar ------------------ #
 class TopBar(QWidget):
+    BUTTON_HEIGHT = 35
+
     def __init__(self, user_config, on_config_change, on_zoom_change, on_pan, on_calibrate):
         super().__init__()
         self.user_config = user_config
@@ -28,39 +27,14 @@ class TopBar(QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
-        # --- Pan Left Button ---
-        self.left_btn = QPushButton()
-        self.left_btn.setMinimumHeight(35)
-        self.left_btn.setStyleSheet(f"""
-                    QPushButton {{
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        font-size: {config.FONT_SIZE}px;
-                        background: palette(button);
-                        color: palette(button-text);
-                    }}
-                """)
-        self.left_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
+        self.left_btn = self._create_arrow_button("left")
         self.left_btn.clicked.connect(lambda: self._pan(-1))
         layout.addWidget(self.left_btn)
 
-        # --- Pan Right Button ---
-        self.right_btn = QPushButton()
-        self.right_btn.setMinimumHeight(35)
-        self.right_btn.setStyleSheet(f"""
-                    QPushButton {{
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        font-size: {config.FONT_SIZE}px;
-                        background: palette(button);
-                        color: palette(button-text);
-                    }}
-                """)
-        self.right_btn.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
+        self.right_btn = self._create_arrow_button("right")
         self.right_btn.clicked.connect(lambda: self._pan(1))
         layout.addWidget(self.right_btn)
 
-        # --- Zoom slider ---
         self.zoom_label = QLabel("Zoom:")
         self.zoom_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
         layout.addWidget(self.zoom_label)
@@ -69,57 +43,80 @@ class TopBar(QWidget):
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(1000)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
-
         layout.addWidget(self.zoom_slider)
 
-        # --- Live button ---
-        self.live_btn = QPushButton("▶ Live")
-        self.live_btn.setMinimumHeight(35)
+        self.live_btn = self._create_button("\u25b6 Live")
         self.live_btn.setMinimumWidth(70)
-        self.live_btn.setStyleSheet(f"""
-            QPushButton {{
-                border-radius: 6px;
-                padding: 8px 12px;
-                font-size: {config.FONT_SIZE}px;
-                background: palette(button);
-                color: palette(button-text);
-            }}
-        """)
         policy = self.live_btn.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.live_btn.setSizePolicy(policy)
         self.live_btn.hide()
         layout.addWidget(self.live_btn)
 
-        # --- PSD Normalization Checkbox ---
-        self.calibrate_btn = QPushButton("Calibrate")
-        self.calibrate_btn.setStyleSheet(f"""
-                    QPushButton {{
-                        border-radius: 6px;
-                        padding: 8px 12px;
-                        font-size: {config.FONT_SIZE}px;
-                        background: palette(button);
-                        color: palette(button-text);
-                    }}
-                """)
-        self.calibrate_btn.setMinimumHeight(35)
+        self.calibrate_btn = self._create_button("Calibrate")
         self.calibrate_btn.clicked.connect(self.on_calibrate)
         layout.addWidget(self.calibrate_btn)
 
-        self.reset_btn = QPushButton()
+        self.reset_btn = self._create_button()
         self.reset_btn.setIcon(QIcon("reset_icon.png"))
-        self.reset_btn.setStyleSheet(f"""
-                            QPushButton {{
-                                border-radius: 6px;
-                                padding: 8px 12px;
-                                font-size: {config.FONT_SIZE}px;
-                                background: palette(button);
-                                color: palette(button-text);
-                            }}
-                        """)
-        self.reset_btn.setMinimumHeight(35)
         self.reset_btn.clicked.connect(self._reset_calibration)
         layout.addWidget(self.reset_btn)
+
+    def _button_style(self, font_size=None, padding="8px 12px"):
+        resolved_font_size = config.FONT_SIZE if font_size is None else font_size
+        return f"""
+            QPushButton {{
+                background-color: rgb(58, 58, 58);
+                color: white;
+                border: 1px solid rgb(78, 78, 78);
+                border-radius: 6px;
+                padding: {padding};
+                font-size: {resolved_font_size}px;
+                text-align: center;
+            }}
+            QPushButton:hover {{
+                background-color: rgb(72, 72, 72);
+            }}
+            QPushButton:pressed {{
+                background-color: rgb(92, 92, 92);
+            }}
+            QPushButton:disabled {{
+                background-color: rgb(48, 48, 48);
+                color: rgb(150, 150, 150);
+            }}
+        """
+
+    def _create_button(self, text="", font_size=None, padding="8px 12px", min_width=None):
+        button = QPushButton(text)
+        button.setMinimumHeight(self.BUTTON_HEIGHT)
+        if min_width is not None:
+            button.setMinimumWidth(min_width)
+        button.setStyleSheet(self._button_style(font_size=font_size, padding=padding))
+        return button
+
+    def _create_arrow_button(self, direction):
+        button = self._create_button("", padding="0px", min_width=self.BUTTON_HEIGHT)
+        button.setIcon(self._create_arrow_icon(direction))
+        button.setIconSize(QSize(16, 16))
+        return button
+
+    def _create_arrow_icon(self, direction):
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("white"))
+
+        if direction == "left":
+            points = [QPoint(10, 3), QPoint(5, 8), QPoint(10, 13)]
+        else:
+            points = [QPoint(6, 3), QPoint(11, 8), QPoint(6, 13)]
+
+        painter.drawPolygon(QPolygon(points))
+        painter.end()
+        return QIcon(pixmap)
 
     # ------------------ New actions ------------------ #
     def _reset_calibration(self):
@@ -171,7 +168,7 @@ class SettingsDialog(QDialog):
     def __init__(self, user_config, on_config_change, parent=None):
         super().__init__(parent)
         self.setWindowTitle("DSA Settings")
-        self.setMinimumSize(640, 260)
+        self.setMinimumSize(640, 200)
 
         self.user_config = user_config
         self.on_config_change = on_config_change
@@ -251,29 +248,6 @@ class SettingsDialog(QDialog):
         # --- Add sliders ---
         add_slider("Window (s)", config.WINDOW_SEC_BOUNDS, user_config.window_sec, 1, unit=" s")
         add_slider("Window Overlap", config.WINDOW_OVERLAP_BOUNDS, user_config.window_overlap, 100, unit=" %", display_factor=100.0, decimals_override=0)
-        add_slider("Max Frequency (Hz)", config.MAX_FREQ_HZ_BOUNDS, user_config.max_freq_hz, 1, unit=" Hz")
-        add_slider("PSD Min (dB)", config.PSD_DB_MIN_BOUNDS, user_config.psd_db_min, 1, unit=" dB")
-        add_slider("PSD Max (dB)", config.PSD_DB_MAX_BOUNDS, user_config.psd_db_max, 1, unit=" dB")
-
-        psd_min_slider, _ = self.sliders["PSD Min (dB)"]
-        psd_max_slider, _ = self.sliders["PSD Max (dB)"]
-
-        def psd_min_changed(val):
-            if val >= psd_max_slider.value():
-                val = psd_max_slider.value() - 1
-                psd_min_slider.blockSignals(True)
-                psd_min_slider.setValue(val)
-                psd_min_slider.blockSignals(False)
-
-        def psd_max_changed(val):
-            if val <= psd_min_slider.value():
-                val = psd_min_slider.value() + 1
-                psd_max_slider.blockSignals(True)
-                psd_max_slider.setValue(val)
-                psd_max_slider.blockSignals(False)
-
-        psd_min_slider.valueChanged.connect(psd_min_changed)
-        psd_max_slider.valueChanged.connect(psd_max_changed)
 
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
@@ -306,7 +280,7 @@ class SettingsDialog(QDialog):
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         msg.setDefaultButton(QMessageBox.No)
         msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
-        
+
         resp = msg.exec()
         if resp != QMessageBox.Yes:
             return
@@ -314,9 +288,6 @@ class SettingsDialog(QDialog):
         mapping = {
             "Window (s)": config.WINDOW_SEC,
             "Window Overlap": config.WINDOW_OVERLAP,
-            "Max Frequency (Hz)": config.MAX_FREQ_HZ,
-            "PSD Min (dB)": config.PSD_DB_MIN,
-            "PSD Max (dB)": config.PSD_DB_MAX,
         }
         for name, (slider, scale) in self.sliders.items():
             if name in mapping:
@@ -330,16 +301,10 @@ class SettingsDialog(QDialog):
         try:
             proposed_window_sec = self.sliders["Window (s)"][0].value()
             proposed_window_overlap = self.sliders["Window Overlap"][0].value() / 100
-            proposed_max_freq_hz = self.sliders["Max Frequency (Hz)"][0].value()
-            proposed_psd_min = self.sliders["PSD Min (dB)"][0].value()
-            proposed_psd_max = self.sliders["PSD Max (dB)"][0].value()
 
             new_config = self.user_config.update(
                 window_sec=proposed_window_sec,
                 window_overlap=proposed_window_overlap,
-                max_freq_hz=proposed_max_freq_hz,
-                psd_db_min=proposed_psd_min,
-                psd_db_max=proposed_psd_max,
             )
             self.on_config_change(new_config)
             self.accept()

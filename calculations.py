@@ -26,7 +26,7 @@ class DSACalculator:
         )
 
         self.notch_b = firwin(
-            numtaps=201,
+            numtaps=81,
             cutoff=[48.5, 51.5],
             fs=fs,
             pass_zero=True,
@@ -85,15 +85,15 @@ class DSACalculator:
             return None, None
 
         # Apply FIR filters
-        #filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
+        filtered = self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
 
         if method == 'multitaper':
-            psd = self.multitaper_method(eeg_values)
+            psd = self.multitaper_method(filtered)
             if psd is None:
                 return np.full(len(config.FREQ_BINS), np.nan, np.float32)
         else:
             _, psd = welch(
-                eeg_values,
+                filtered,
                 fs=config.SAMPLE_RATE_HZ,
                 nperseg=config.N_PER_SEGMENT,
                 noverlap=None, # If None then overlap is 50%

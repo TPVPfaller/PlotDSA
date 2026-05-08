@@ -4,12 +4,50 @@ from collections import deque
 import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem, GridItem
-from PySide6.QtCore import Qt, QEvent, QTimer
+from PySide6.QtCore import QByteArray, QSize, Qt, QEvent, QTimer
+from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 import time
 
 import math
 from buffers import DSABuffer
 import config
+
+SETTINGS_GEAR_SVG = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+        <path fill="#FFFFFF" d="M502.325,307.303l-39.006-30.805c-6.215-4.908-9.665-12.429-9.668-20.348c0-0.084,0-0.168,0-0.252
+        c-0.014-7.936,3.44-15.478,9.667-20.396l39.007-30.806c8.933-7.055,12.093-19.185,7.737-29.701l-17.134-41.366
+        c-4.356-10.516-15.167-16.86-26.472-15.532l-49.366,5.8c-7.881,0.926-15.656-1.966-21.258-7.586
+        c-0.059-0.06-0.118-0.119-0.177-0.178c-5.597-5.602-8.476-13.36-7.552-21.225l5.799-49.363
+        c1.328-11.305-5.015-22.116-15.531-26.472L337.004,1.939c-10.516-4.356-22.646-1.196-29.701,7.736l-30.805,39.005
+        c-4.908,6.215-12.43,9.665-20.349,9.668c-0.084,0-0.168,0-0.252,0c-7.935,0.014-15.477-3.44-20.395-9.667L204.697,9.675
+        c-7.055-8.933-19.185-12.092-29.702-7.736L133.63,19.072c-10.516,4.356-16.86,15.167-15.532,26.473l5.799,49.366
+        c0.926,7.881-1.964,15.656-7.585,21.257c-0.059,0.059-0.118,0.118-0.178,0.178c-5.602,5.598-13.36,8.477-21.226,7.552
+        l-49.363-5.799c-11.305-1.328-22.116,5.015-26.472,15.531L1.939,174.996c-4.356,10.516-1.196,22.646,7.736,29.701l39.006,30.805
+        c6.215,4.908,9.665,12.429,9.668,20.348c0,0.084,0,0.167,0,0.251c0.014,7.935-3.44,15.477-9.667,20.395L9.675,307.303
+        c-8.933,7.055-12.092,19.185-7.736,29.701l17.134,41.365c4.356,10.516,15.168,16.86,26.472,15.532l49.366-5.799
+        c7.882-0.926,15.656,1.965,21.258,7.586c0.059,0.059,0.118,0.119,0.178,0.178c5.597,5.603,8.476,13.36,7.552,21.226l-5.799,49.364
+        c-1.328,11.305,5.015,22.116,15.532,26.472l41.366,17.134c10.516,4.356,22.646,1.196,29.701-7.736l30.804-39.005
+        c4.908-6.215,12.43-9.665,20.348-9.669c0.084,0,0.168,0,0.251,0c7.936-0.014,15.478,3.44,20.396,9.667l30.806,39.007
+        c7.055,8.933,19.185,12.093,29.701,7.736l41.366-17.134c10.516-4.356,16.86-15.168,15.532-26.472l-5.8-49.366
+        c-0.926-7.881,1.965-15.656,7.586-21.257c0.059-0.059,0.119-0.119,0.178-0.178c5.602-5.597,13.36-8.476,21.225-7.552l49.364,5.799
+        c11.305,1.328,22.117-5.015,26.472-15.531l17.134-41.365C514.418,326.488,511.258,314.358,502.325,307.303z M281.292,329.698
+        c-39.68,16.436-85.172-2.407-101.607-42.087c-16.436-39.68,2.407-85.171,42.087-101.608c39.68-16.436,85.172,2.407,101.608,42.088
+        C339.815,267.771,320.972,313.262,281.292,329.698z"/>
+    </svg>
+"""
+
+
+def create_settings_gear_icon(size=18):
+    renderer = QSvgRenderer(QByteArray(SETTINGS_GEAR_SVG.encode("utf-8")))
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+
+    return QIcon(pixmap)
 
 
 # ------------------ DSA View ------------------ #
@@ -75,6 +113,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._init_plot()
         self._init_colormap()
         self._init_colorbar()
+        self._init_settings_controls()
         self._init_gestures()
         self.update()
 
@@ -104,11 +143,9 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.invertY(False)
         self.plot.setMouseEnabled(x=False, y=False)
         self._update_y_axis()
-        self.plot.setContentsMargins(20, 20, 0, 0)
+        self.plot.setContentsMargins(20, 10, 0, 3)
         self.image = pg.ImageItem(axisOrder='col-major', interpolation="linear")
         self.plot.addItem(self.image)
-
-        self._init_freq_buttons()
 
     def _update_y_axis(self):
         max_f = self.user_config.max_freq_hz
@@ -116,38 +153,20 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.freq_axis.set_max_freq(max_f)
 
     def _init_freq_buttons(self):
-        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
+        from PySide6.QtWidgets import QGraphicsProxyWidget
 
-        # Create a container widget for the buttons
-        self.btn_container = QFrame()
-        self.btn_container.setStyleSheet("background: transparent; border: none;")
-        layout = QVBoxLayout(self.btn_container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
+        self.btn_container, buttons = self._create_adjust_button_container(
+            spacing=2,
+            plus_handler=lambda: self._adjust_max_freq(1),
+            minus_handler=lambda: self._adjust_max_freq(-1),
+        )
+        self.btn_plus, self.btn_minus = buttons
 
-        self.btn_plus = QPushButton("+")
-        self.btn_minus = QPushButton("-")
-
-        # Explicitly set parent to ensure they aren't garbage collected
-        # though QGraphicsProxyWidget should handle it.
-        self.btn_plus.setParent(self.btn_container)
-        self.btn_minus.setParent(self.btn_container)
-
-        for btn in [self.btn_plus, self.btn_minus]:
-            self._style_adjust_button(btn)
-            layout.addWidget(btn)
-
-        self.btn_plus.clicked.connect(lambda: self._adjust_max_freq(1))
-        self.btn_minus.clicked.connect(lambda: self._adjust_max_freq(-1))
-
-        # Add the container to the plot using a proxy
         self.proxy = QGraphicsProxyWidget()
         self.proxy.setWidget(self.btn_container)
         self.proxy.setParentItem(self.plot.vb)
         self.plot.vb.setFlag(pg.GraphicsWidget.ItemClipsChildrenToShape, False)
 
-        # Position it at the top-left of the viewbox
-        # We'll update the position when the viewbox is resized
         self.plot.vb.sigResized.connect(self._update_button_pos)
         self._update_button_pos()
 
@@ -201,8 +220,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.image.setLookupTable(self.lut)
 
     def _init_colorbar(self):
-        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
-
         self.colorbar = ColorBarItem(
             values=(self.user_config.psd_db_min, self.user_config.psd_db_max),
             colorMap=self.cmap,
@@ -216,38 +233,209 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.ci.layout.setColumnStretchFactor(1, 1)
         self.ci.layout.setContentsMargins(0, 0, 40, 0)
 
-        self.colorbar_max_btn_proxy = self._create_colorbar_button_group(
-            plus_handler=lambda: self._adjust_psd_level("psd_db_max", 1),
-            minus_handler=lambda: self._adjust_psd_level("psd_db_max", -1),
-        )
-        self.colorbar_min_btn_proxy = self._create_colorbar_button_group(
-            plus_handler=lambda: self._adjust_psd_level("psd_db_min", 1),
-            minus_handler=lambda: self._adjust_psd_level("psd_db_min", -1),
-        )
-        QTimer.singleShot(0, self._position_colorbar_buttons)
+    def _init_settings_controls(self):
+        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
 
-    def _create_colorbar_button_group(self, plus_handler, minus_handler):
-        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout, QGraphicsProxyWidget
+        self.dsa_value_labels = {}
 
-        container = QFrame()
-        container.setStyleSheet("background: transparent; border: none;")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        self.settings_button = QToolButton(self.viewport())
+        self.settings_button.setCursor(Qt.PointingHandCursor)
+        self.settings_button.setFixedSize(28, 28)
+        self.settings_button.setIcon(create_settings_gear_icon())
+        self.settings_button.setIconSize(QSize(18, 18))
+        self.settings_button.setStyleSheet("""
+            QToolButton {
+                background-color: rgba(60, 60, 60, 170);
+                border: 1px solid rgba(255, 255, 255, 45);
+                border-radius: 14px;
+            }
+            QToolButton:hover {
+                background-color: rgba(80, 80, 80, 220);
+            }
+            QToolButton:pressed {
+                background-color: rgba(100, 100, 100, 255);
+            }
+        """)
+        self.settings_button.clicked.connect(self._toggle_settings_popup)
+
+        self.settings_popup = QFrame(self.viewport())
+        self.settings_popup.setObjectName("dsaSettingsPopup")
+        self.settings_popup.hide()
+        self.settings_popup.setStyleSheet("""
+            QFrame#dsaSettingsPopup {
+                background-color: rgba(28, 28, 28, 245);
+                border: 1px solid rgba(255, 255, 255, 35);
+                border-radius: 8px;
+            }
+            QLabel {
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton {
+                background-color: rgba(60, 60, 60, 170);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 16px;
+                padding: 0px;
+                text-align: center;
+            }
+            QPushButton:hover {
+                background-color: rgba(80, 80, 80, 210);
+            }
+            QLabel[role="value"] {
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 6px 8px;
+            }
+        """)
+
+        popup_layout = QVBoxLayout(self.settings_popup)
+        popup_layout.setContentsMargins(10, 10, 10, 10)
+        popup_layout.setSpacing(8)
+        popup_layout.addLayout(self._create_step_control_row(
+            "Max Freq",
+            "max_freq_hz",
+            lambda value: f"{value} Hz",
+            lambda: self._adjust_max_freq(-1),
+            lambda: self._adjust_max_freq(1),
+        ))
+        popup_layout.addLayout(self._create_step_control_row(
+            "Max Power",
+            "psd_db_max",
+            lambda value: f"{value} dB",
+            lambda: self._adjust_psd_level("psd_db_max", -1),
+            lambda: self._adjust_psd_level("psd_db_max", 1),
+        ))
+        popup_layout.addLayout(self._create_step_control_row(
+            "Min Power",
+            "psd_db_min",
+            lambda value: f"{value} dB",
+            lambda: self._adjust_psd_level("psd_db_min", -1),
+            lambda: self._adjust_psd_level("psd_db_min", 1),
+        ))
+
+        self._sync_settings_labels()
+        self._update_settings_button_pos()
+        QApplication.instance().installEventFilter(self)
+
+    def _create_step_control_row(self, title, field_name, formatter, minus_handler, plus_handler):
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+
+        block = QVBoxLayout()
+        block.setContentsMargins(0, 0, 0, 0)
+        block.setSpacing(4)
+        block.addWidget(QLabel(title))
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+
+        minus_button = QPushButton("-")
+        minus_button.setFixedSize(32, 32)
+        minus_button.clicked.connect(minus_handler)
+        row.addWidget(minus_button)
+
+        value_label = QLabel()
+        value_label.setProperty("role", "value")
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setFixedWidth(50)
+        row.addWidget(value_label)
+        self.dsa_value_labels[field_name] = (value_label, formatter)
 
         plus_button = QPushButton("+")
-        minus_button = QPushButton("-")
-        self._style_adjust_button(plus_button)
-        self._style_adjust_button(minus_button)
+        plus_button.setFixedSize(32, 32)
         plus_button.clicked.connect(plus_handler)
-        minus_button.clicked.connect(minus_handler)
-        layout.addWidget(plus_button)
-        layout.addWidget(minus_button)
+        row.addWidget(plus_button)
+
+        block.addLayout(row)
+        return block
+
+    def _sync_settings_labels(self):
+        for field_name, (label, formatter) in self.dsa_value_labels.items():
+            label.setText(formatter(getattr(self.user_config, field_name)))
+
+    def _toggle_settings_popup(self):
+        if self.settings_popup.isVisible():
+            self.settings_popup.hide()
+            return
+
+        self._sync_settings_labels()
+        self._position_settings_popup()
+        self.settings_popup.show()
+        self.settings_popup.raise_()
+
+    def _position_settings_popup(self):
+        self.settings_popup.adjustSize()
+        popup_x = max(0, self.settings_button.x() - self.settings_popup.width() - 6)
+        popup_y = max(0, self.settings_button.y())
+        self.settings_popup.move(popup_x, popup_y)
+
+    def _update_settings_button_pos(self):
+        if not hasattr(self, "settings_button"):
+            return
+
+        x = max(0, self.viewport().width() - self.settings_button.width() - 12)
+        self.settings_button.move(x, 8)
+        if self.settings_popup.isVisible():
+            self._position_settings_popup()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and self.settings_popup.isVisible():
+            from PySide6.QtWidgets import QApplication
+
+            target = QApplication.widgetAt(event.globalPosition().toPoint())
+            if not self._settings_click_is_inside(target):
+                self.settings_popup.hide()
+
+        return super().eventFilter(obj, event)
+
+    def _settings_click_is_inside(self, target):
+        if target is None:
+            return False
+
+        return (
+            target is self.settings_popup
+            or target is self.settings_button
+            or self.settings_popup.isAncestorOf(target)
+            or self.settings_button.isAncestorOf(target)
+        )
+
+    def _create_colorbar_button_group(self, plus_handler, minus_handler):
+        from PySide6.QtWidgets import QGraphicsProxyWidget
+
+        container, _ = self._create_adjust_button_container(
+            spacing=4,
+            plus_handler=plus_handler,
+            minus_handler=minus_handler,
+        )
 
         proxy = QGraphicsProxyWidget(self.colorbar)
         proxy.setWidget(container)
         proxy.setZValue(100)
         return proxy
+
+    def _create_adjust_button_container(self, spacing, plus_handler, minus_handler):
+        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout
+
+        container = QFrame()
+        container.setStyleSheet("background: transparent; border: none;")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(spacing)
+
+        buttons = []
+        for label, handler in (("+", plus_handler), ("-", minus_handler)):
+            button = QPushButton(label, container)
+            self._style_adjust_button(button)
+            button.clicked.connect(handler)
+            layout.addWidget(button)
+            buttons.append(button)
+
+        return container, tuple(buttons)
 
     def _position_colorbar_buttons(self):
         if not hasattr(self, "colorbar_max_btn_proxy") or not hasattr(self, "colorbar_min_btn_proxy"):
@@ -263,7 +451,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self._position_colorbar_buttons()
+        self._update_settings_button_pos()
 
     def _adjust_psd_level(self, field_name, delta):
         current_value = getattr(self.user_config, field_name)
@@ -288,35 +476,59 @@ class DSAView(pg.GraphicsLayoutWidget):
         if psd is not None:
             self.dsa_buffer.append(ts, psd)
 
-    # ------------------ Update & Rendering ------------------ #
-    def update(self):
-        self._last_render = time.time()
-        visible_width_sec = self.display_minutes * 60.0
-        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
+    def _visible_width_sec(self):
+        return self.display_minutes * 60.0
 
-        target_res = visible_width_sec / 2160.0 # When displaying more than 6 hours reduce resolution to 10s
-        target_res = max(1.0, target_res)
+    def _target_resolution(self, visible_width_sec, divisor):
+        return max(1.0, visible_width_sec / divisor)
 
-        max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
+    def _pan_limits(self, visible_width_sec):
         min_offset = self.dsa_buffer.get_oldest_timestamp()
+        max_offset = max(min_offset, self.dsa_buffer.get_newest_timestamp() - visible_width_sec)
+        return min_offset, max_offset
+
+    def _current_pan_start(self, visible_width_sec):
+        min_offset, max_offset = self._pan_limits(visible_width_sec)
+        if self.live_mode:
+            return max_offset
+        return float(np.clip(self._pan_sec, min_offset, max_offset))
+
+    def _sync_pan_window(self, visible_width_sec):
+        min_offset, max_offset = self._pan_limits(visible_width_sec)
 
         if self.live_mode:
             self._pan_sec = max_offset
-        else:
-            self._pan_sec =np.clip(self._pan_sec, min_offset, max_offset)
-            if self._pan_sec >= max_offset - 0.05:
-                self.live_mode = True
-                self._pan_sec = max_offset
+            return
+
+        self._pan_sec = float(np.clip(self._pan_sec, min_offset, max_offset))
+        if self._pan_sec >= max_offset - 0.05:
+            self.live_mode = True
+            self._pan_sec = max_offset
+
+    def _get_visible_dsa_data(self, target_divisor):
+        visible_width_sec = self._visible_width_sec()
+        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
+        self._sync_pan_window(visible_width_sec)
 
         self.t0, self.dsa_rect, actual_res = self.dsa_buffer.get_view_at(
-            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
-            target_resolution=target_res
+            width=n_time_bins,
+            height=len(self.freq_bins),
+            pan_sec=self._pan_sec,
+            target_resolution=self._target_resolution(visible_width_sec, target_divisor),
         )
-        print(actual_res)
-        data = np.ascontiguousarray(self.dsa_rect)
+        return visible_width_sec, self._psd_to_db(self.dsa_rect), actual_res
+
+    def _psd_to_db(self, data):
+        data = np.ascontiguousarray(data)
         np.maximum(data, np.finfo(np.float32).eps, out=data)
         np.log10(data, out=data)
         data *= 10
+        return data
+
+    # ------------------ Update & Rendering ------------------ #
+    def update(self):
+        self._last_render = time.time()
+        visible_width_sec, data, actual_res = self._get_visible_dsa_data(2160.0)
 
         levels = (self.user_config.psd_db_min, self.user_config.psd_db_max)
         if levels != self._last_levels:
@@ -329,34 +541,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.setXRange(self.t0, self.t0 + visible_width_sec, padding=0)
 
     def calibrate(self):
-        visible_width_sec = self.display_minutes * 60.0
-        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
-
-        # Target resolution for calibration: use Level 0 (1s) if possible for accuracy,
-        # but for performance if zoomed out, we can use the same logic as update.
-        target_res = visible_width_sec / 1000.0
-        target_res = max(1.0, target_res)
-
-        max_offset = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
-        min_offset = self.dsa_buffer.get_oldest_timestamp()
-
-        if self.live_mode:
-            self._pan_sec = max_offset
-        else:
-            self._pan_sec = np.clip(self._pan_sec, min_offset, max_offset)
-            if self._pan_sec >= max_offset - 0.05:
-                self.live_mode = True
-                self._pan_sec = max_offset
-
-        _, self.dsa_rect, _ = self.dsa_buffer.get_view_at(
-            width=n_time_bins, height=len(self.freq_bins), pan_sec=self._pan_sec,
-            target_resolution=target_res
-        )
-        data = np.ascontiguousarray(self.dsa_rect)
-
-        np.maximum(data, np.finfo(np.float32).eps, out=data)
-        np.log10(data, out=data)
-        data *= 10
+        _, data, _ = self._get_visible_dsa_data(1000.0)
         data = data[~np.isnan(data)]
         if len(data) > 0:
             data.sort()
@@ -371,8 +556,7 @@ class DSAView(pg.GraphicsLayoutWidget):
     def jump_to_live(self):
         self.live_mode = True
         if self.dsa_buffer.t0 is not None:
-            visible_width_sec = self.display_minutes * 60
-            self._pan_sec = self.dsa_buffer.get_newest_timestamp() - visible_width_sec
+            self._pan_sec = self._current_pan_start(self._visible_width_sec())
             self.update()
 
     def pan(self, delta_percent):
@@ -384,8 +568,10 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.jump_to_live()
             return
 
+        visible_width_sec = self._visible_width_sec()
+        current_start = self._current_pan_start(visible_width_sec)
         self.live_mode = False
-        self._pan_sec += self.display_minutes * delta_percent * 60
+        self._pan_sec = current_start + visible_width_sec * delta_percent
         self.update()
 
     def clear_data(self):
@@ -410,12 +596,10 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self.dsa_buffer.t0 is not None and self._dragging and self._last_mouse_pos is not None:
             delta = ev.pos() - self._last_mouse_pos
             self._last_mouse_pos = ev.pos()
-            visible_width_sec = self.display_minutes * 60
+            visible_width_sec = self._visible_width_sec()
             width_px = self.plot.width()
             dt = (delta.x() / width_px) * visible_width_sec if width_px else 0
-            if self._pan_sec == 0.0:
-                self._pan_sec = self.dsa_buffer.t0
-            self._pan_sec -= dt
+            self._pan_sec = self._current_pan_start(visible_width_sec) - dt
             self.live_mode = False
             self.update()
 
@@ -455,20 +639,18 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def apply_zoom(self, new_minutes):
         if new_minutes is not None:
-            old_width = self.display_minutes * 60.0
+            old_width = self._visible_width_sec()
+            old_start = self._current_pan_start(old_width)
             new_width = new_minutes * 60.0
             self.display_minutes = new_minutes
 
-            # keep current center
-            center = self._pan_sec + old_width / 2.0
-
-            # recompute pan so center stays fixed
-            self._pan_sec = center - new_width / 2.0
-
             if self.dsa_buffer.t0 is not None:
-                max_offset = self.dsa_buffer.get_newest_timestamp() - new_width
-                min_offset = self.dsa_buffer.get_oldest_timestamp()
-                self._pan_sec = max(min_offset, min(self._pan_sec, max_offset))
+                min_offset, max_offset = self._pan_limits(new_width)
+                if self.live_mode:
+                    self._pan_sec = max_offset
+                else:
+                    center = old_start + old_width / 2.0
+                    self._pan_sec = float(np.clip(center - new_width / 2.0, min_offset, max_offset))
         self.update()
 
     def apply_config(self, new_config):
@@ -478,6 +660,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             self.freq_bins = config.FREQ_BINS[(config.FREQ_BINS <= self.user_config.max_freq_hz)]
             self._update_y_axis()
 
+        self._sync_settings_labels()
         self.update()
 
 
@@ -512,6 +695,8 @@ class EEGView(pg.PlotWidget):
     """Real-time circular EEG display with smooth sweep line + gap (optimized)."""
 
     RENDER_HZ = 20
+    EEG_SWEEP_SPEED_OPTIONS = config.EEG_MM_PER_SECOND_OPTIONS
+    EEG_Y_RANGE_OPTIONS = (50, 100, 150)
 
     def __init__(self, user_config, on_config_change=None):
         super().__init__()
@@ -546,7 +731,7 @@ class EEGView(pg.PlotWidget):
         # Sweep line
         self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
         self.addItem(self.update_line)
-        self._init_amplitude_buttons()
+        self._init_settings_controls()
 
         # --- Buffer setup ---
         self.N = int(config.EEG_VIEW_WINDOW_SEC * config.SAMPLE_RATE_HZ)
@@ -582,50 +767,155 @@ class EEGView(pg.PlotWidget):
         self._timer.timeout.connect(self._render_frame)
         self._timer.start(int(1000 / self.RENDER_HZ))
 
-    def _init_amplitude_buttons(self):
-        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout
+    def _init_settings_controls(self):
+        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
 
+        self.sweep_buttons = {}
         self.amplitude_buttons = {}
-        self.amplitude_container = QFrame(self.viewport())
-        self.amplitude_container.setStyleSheet("background: transparent; border: none;")
-        layout = QVBoxLayout(self.amplitude_container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
 
-        for amplitude in (50, 75, 125):
-            button = QPushButton(str(amplitude))
+        self.settings_button = QToolButton(self.viewport())
+        self.settings_button.setCursor(Qt.PointingHandCursor)
+        self.settings_button.setFixedSize(28, 28)
+        self.settings_button.setIcon(create_settings_gear_icon())
+        self.settings_button.setIconSize(QSize(18, 18))
+        self.settings_button.setStyleSheet("""
+            QToolButton {
+                background-color: rgba(60, 60, 60, 170);
+                border: 1px solid rgba(255, 255, 255, 45);
+                border-radius: 14px;
+            }
+            QToolButton:hover {
+                background-color: rgba(80, 80, 80, 220);
+            }
+            QToolButton:pressed {
+                background-color: rgba(100, 100, 100, 255);
+            }
+        """)
+        self.settings_button.clicked.connect(self._toggle_settings_popup)
+
+        self.settings_popup = QFrame(self.viewport())
+        self.settings_popup.setObjectName("eegSettingsPopup")
+        self.settings_popup.hide()
+        self.settings_popup.setStyleSheet("""
+            QFrame#eegSettingsPopup {
+                background-color: rgba(28, 28, 28, 245);
+                border: 1px solid rgba(255, 255, 255, 35);
+                border-radius: 8px;
+            }
+            QLabel {
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+            }
+        """)
+
+        popup_layout = QVBoxLayout(self.settings_popup)
+        popup_layout.setContentsMargins(10, 10, 10, 10)
+        popup_layout.setSpacing(8)
+
+        popup_layout.addWidget(QLabel("Sweep Speed"))
+        popup_layout.addLayout(
+            self._create_settings_button_row(
+                self.EEG_SWEEP_SPEED_OPTIONS,
+                self.sweep_buttons,
+                self._set_eeg_sweep_speed,
+            )
+        )
+
+        popup_layout.addWidget(QLabel("Y Range"))
+        popup_layout.addLayout(
+            self._create_settings_button_row(
+                self.EEG_Y_RANGE_OPTIONS,
+                self.amplitude_buttons,
+                self._set_eeg_y_max,
+            )
+        )
+
+        self._sync_sweep_buttons()
+        self._sync_amplitude_buttons()
+        self._update_settings_button_pos()
+        QApplication.instance().installEventFilter(self)
+
+    def _create_settings_button_row(self, options, button_map, handler):
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        for option in options:
+            label = f"{option:g}" if isinstance(option, float) else str(option)
+            button = QPushButton(label)
             button.setCheckable(True)
-            button.setFixedSize(40, 30)
+            button.setFixedSize(42, 28)
             button.setStyleSheet("""
                 QPushButton {
-                    background-color: rgba(60, 60, 60, 150);
+                    background-color: rgba(60, 60, 60, 170);
                     color: white;
+                    border: none;
                     border-radius: 4px;
                     font-weight: bold;
-                    font-size: 14px;
+                    font-size: 13px;
                 }
                 QPushButton:hover {
-                    background-color: rgba(80, 80, 80, 200);
+                    background-color: rgba(80, 80, 80, 210);
                 }
                 QPushButton:checked {
                     background-color: rgba(0, 150, 220, 220);
                 }
             """)
-            button.clicked.connect(lambda _, max_uv=amplitude: self._set_eeg_y_max(max_uv))
+            button.clicked.connect(lambda _, value=option: handler(value))
             layout.addWidget(button)
-            self.amplitude_buttons[amplitude] = button
+            button_map[option] = button
 
-        self.amplitude_container.raise_()
-        self._sync_amplitude_buttons()
-        self._update_amplitude_button_pos()
+        return layout
 
-    def _update_amplitude_button_pos(self):
-        if not hasattr(self, "amplitude_container"):
+    def _toggle_settings_popup(self):
+        if self.settings_popup.isVisible():
+            self.settings_popup.hide()
             return
 
-        self.amplitude_container.adjustSize()
-        x = max(0, self.viewport().width() - self.amplitude_container.width() - 12)
-        self.amplitude_container.move(x, 8)
+        self._sync_sweep_buttons()
+        self._sync_amplitude_buttons()
+        self._position_settings_popup()
+        self.settings_popup.show()
+        self.settings_popup.raise_()
+
+    def _position_settings_popup(self):
+        self.settings_popup.adjustSize()
+        popup_x = max(0, self.settings_button.x() - self.settings_popup.width() - 6)
+        popup_y = max(0, self.settings_button.y())
+        self.settings_popup.move(popup_x, popup_y)
+
+    def _update_settings_button_pos(self):
+        if not hasattr(self, "settings_button"):
+            return
+
+        x = max(0, self.viewport().width() - self.settings_button.width() - 12)
+        self.settings_button.move(x, 8)
+        if self.settings_popup.isVisible():
+            self._position_settings_popup()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and self.settings_popup.isVisible():
+            from PySide6.QtWidgets import QApplication
+
+            target = QApplication.widgetAt(event.globalPosition().toPoint())
+            if not self._settings_click_is_inside(target):
+                self.settings_popup.hide()
+
+        return super().eventFilter(obj, event)
+
+    def _settings_click_is_inside(self, target):
+        if target is None:
+            return False
+
+        return (
+            target is self.settings_popup
+            or target is self.settings_button
+            or self.settings_popup.isAncestorOf(target)
+            or self.settings_button.isAncestorOf(target)
+        )
 
     def _apply_y_range(self):
         max_uv = self.user_config.eeg_uv_range_max
@@ -636,6 +926,13 @@ class EEGView(pg.PlotWidget):
         for amplitude, button in self.amplitude_buttons.items():
             button.blockSignals(True)
             button.setChecked(amplitude == selected)
+            button.blockSignals(False)
+
+    def _sync_sweep_buttons(self):
+        selected = self.user_config.eeg_mm_per_second
+        for speed, button in self.sweep_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(speed == selected)
             button.blockSignals(False)
 
     def _set_eeg_y_max(self, max_uv):
@@ -649,6 +946,18 @@ class EEGView(pg.PlotWidget):
             return
 
         self.on_config_change(self.user_config.update(eeg_uv_range_max=max_uv))
+
+    def _set_eeg_sweep_speed(self, mm_per_second):
+        if mm_per_second == self.user_config.eeg_mm_per_second:
+            return
+
+        if self.on_config_change is None:
+            self.user_config = self.user_config.update(eeg_mm_per_second=mm_per_second)
+            self._sync_sweep_buttons()
+            self._update_time_scale()
+            return
+
+        self.on_config_change(self.user_config.update(eeg_mm_per_second=mm_per_second))
 
 
     def showEvent(self, event):
@@ -740,7 +1049,7 @@ class EEGView(pg.PlotWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_time_scale()
-        self._update_amplitude_button_pos()
+        self._update_settings_button_pos()
 
     def clear_data(self):
         self.history.clear()
@@ -755,6 +1064,7 @@ class EEGView(pg.PlotWidget):
     def apply_config(self, user_config):
         self.user_config = user_config
         self._apply_y_range()
+        self._sync_sweep_buttons()
         self._sync_amplitude_buttons()
         self._update_time_scale()
 
