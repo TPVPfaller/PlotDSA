@@ -1,6 +1,6 @@
 import numpy as np
 import datetime
-from data import EEGBuffer
+from buffers import EEGBuffer
 import config
 
 
@@ -21,22 +21,8 @@ def generate_samples(n, start_time):
     return samples
 
 
-def test_window_produces_dsa_column():
-    buffer = EEGBuffer(window_sec=4, overlap=0.5)
-
-    start = datetime.datetime.now()
-    samples = generate_samples(
-        int(4 * config.SAMPLE_RATE_HZ),
-        start
-    )
-
-    dsa_cols, raw = buffer.get_dsa_columns(samples)
-
-    assert len(dsa_cols) > 0
-
-
 def test_timestamp_fault_resets_buffer():
-    buffer = EEGBuffer(4, 1)
+    buffer = EEGBuffer(4, 0.0)
 
     start = datetime.datetime.now()
     samples = generate_samples(100, start)
@@ -54,7 +40,7 @@ def test_eegbuffer_sliding_window_count():
     window = 2.0
     overlap = 0.5
 
-    buf = EEGBuffer(window, 1.0)
+    buf = EEGBuffer(window, overlap)
 
     n = int(5 * sr)
     ts = make_timestamp_series(datetime.datetime.now(), n, sr)
@@ -71,7 +57,7 @@ def test_eegbuffer_sliding_window_count():
 
 def test_eegbuffer_resets_on_gap():
     sr = config.SAMPLE_RATE_HZ
-    buf = EEGBuffer(2.0, 1.0)
+    buf = EEGBuffer(2.0, 0.0)
 
     t0 = datetime.datetime.now()
 
@@ -87,7 +73,7 @@ def test_eegbuffer_resets_on_gap():
 
 def test_eegbuffer_resets_on_timestamp_gap():
     window_sec = 1.0
-    buf = EEGBuffer(window_sec, 1.0)
+    buf = EEGBuffer(window_sec, 0.0)
 
     base = datetime.datetime.now()
 
@@ -101,9 +87,9 @@ def test_eegbuffer_resets_on_timestamp_gap():
 
 
 def test_eegbuffer_produces_dsa_column():
-    window_sec = 1.0
+    window_sec = 2.0
     sample_rate = config.SAMPLE_RATE_HZ
-    buf = EEGBuffer(window_sec, 1.0)
+    buf = EEGBuffer(window_sec, 0.0)
 
     base = datetime.datetime.now()
 
@@ -115,3 +101,72 @@ def test_eegbuffer_produces_dsa_column():
     out, samples = buf.get_dsa_columns(data)
 
     assert len(out) >= 1
+
+
+def test_apply_config_recomputes_window_and_hop_lengths():
+    buf = EEGBuffer(window_sec=4.0, overlap=0.0)
+
+    buf.apply_config(window_sec=2.0, overlap=0.5)
+
+    assert buf.window_sec == 2.0
+    assert buf.window_len == int(2.0 * config.SAMPLE_RATE_HZ)
+    assert buf.hop_len == int(buf.window_len * 0.5)
+
+
+def test_eegbuffer_accumulates_partial_window_across_calls():
+    window_sec = 2.0
+    sample_rate = config.SAMPLE_RATE_HZ
+    buf = EEGBuffer(window_sec, 0.0)
+    base = datetime.datetime.now()
+
+    first_chunk = generate_samples(int(sample_rate), base)
+    second_chunk = generate_samples(int(sample_rate), base + datetime.timedelta(seconds=1))
+
+    out1, _ = buf.get_dsa_columns(first_chunk)
+    out2, _ = buf.get_dsa_columns(second_chunk)
+
+    assert out1 == []
+    assert len(out2) == 1
+
+
+def test_eegbuffer_jitter_within_dsa_tolerance_does_not_reset():
+    buf = EEGBuffer(2.0, 0.0)
+    base = datetime.datetime.now()
+    nominal_step = datetime.timedelta(milliseconds=1000 / config.SAMPLE_RATE_HZ)
+    jitter = datetime.timedelta(seconds=config.EEG_TIME_DIFF_TOLERANCE * 1.5)
+
+    samples = []
+    ts = base
+    for idx in range(int(2.0 * config.SAMPLE_RATE_HZ)):
+        if idx == 50:
+            ts += jitter
+        samples.append((ts, 1.0))
+        ts += nominal_step
+
+    out, raw = buf.get_dsa_columns(samples)
+
+    assert len(out) == 1
+    assert not any(np.isnan(value) for value in buf.eeg_values)
+    assert np.isnan(raw[50])
+
+
+def test_eegbuffer_high_overlap_uses_minimum_hop_of_one_sample():
+    buf = EEGBuffer(2.0, 0.99)
+    base = datetime.datetime.now()
+    samples = generate_samples(int(2.0 * config.SAMPLE_RATE_HZ) + 3, base)
+
+    out, _ = buf.get_dsa_columns(samples)
+
+    assert buf.hop_len == 5
+    assert len(out) >= 1
+
+
+def test_eegbuffer_drops_initial_nan_sample_without_crashing():
+    buf = EEGBuffer(2.0, 0.0)
+    base = datetime.datetime.now()
+
+    out, raw = buf.get_dsa_columns([(base, np.nan)])
+
+    assert out == []
+    assert raw == [np.nan]
+    assert buf.last_ts is None

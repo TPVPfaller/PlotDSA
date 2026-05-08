@@ -19,7 +19,8 @@ def test_psd_returns_correct_frequency_range():
     t = np.arange(0, 4, 1/fs)
     signal = np.sin(2 * np.pi * 10 * t)
 
-    f, psd = calc.compute_psd_column(signal)
+    psd = calc.compute_psd_column(signal)
+    f = config.FREQ_BINS
 
     assert f is not None
     assert psd is not None
@@ -35,7 +36,8 @@ def test_psd_detects_10hz_peak():
     t = np.arange(0, 4, 1/fs)
     signal = np.sin(2 * np.pi * 10 * t)
 
-    f, psd = calc.compute_psd_column(signal)
+    psd = calc.compute_psd_column(signal)
+    f = config.FREQ_BINS
 
     peak_freq = f[np.argmax(psd)]
     assert abs(peak_freq - 10) < 0.5
@@ -45,19 +47,38 @@ def test_psd_returns_nan_on_invalid_signal():
     calc = DSACalculator(4)
     signal = np.zeros(int(4 * config.SAMPLE_RATE_HZ))
 
-    f, psd = calc.compute_psd_column(signal)
+    psd = calc.compute_psd_column(signal)
 
     assert np.all(np.isnan(psd))
 
-def test_psd_detects_correct_frequency():
+def test_psd_detects_peak_in_noisy_signal():
+    rng = np.random.default_rng(0)
     sr = config.SAMPLE_RATE_HZ
-    window_sec = 4.0
+    t = np.arange(0, 4, 1 / sr)
+    signal = np.sin(2 * np.pi * 12 * t) + rng.normal(0, 0.25, size=len(t))
 
-    eeg = generate_sine(freq=10, seconds=window_sec, sr=sr)
+    calc = DSACalculator(4.0)
+    psd = calc.compute_psd_column(signal)
+    peak_freq = config.FREQ_BINS[np.argmax(psd)]
 
-    calc = DSACalculator(window_sec)
-    f, psd = calc.compute_psd_column(eeg)
+    assert abs(peak_freq - 12.0) < 1.0
 
-    peak_freq = f[np.argmax(psd)]
 
-    assert abs(peak_freq - 10.0) < 0.5, "PSD peak should be near 10 Hz"
+def test_psd_returns_none_for_short_signal():
+    calc = DSACalculator(window_sec=4)
+
+    psd = calc.compute_psd_column(np.ones(int(config.SAMPLE_RATE_HZ)))
+
+    assert psd == (None, None)
+
+
+def test_psd_welch_mode_uses_same_frequency_bins():
+    calc = DSACalculator(window_sec=4)
+    sr = config.SAMPLE_RATE_HZ
+    t = np.arange(0, 4, 1 / sr)
+    signal = np.sin(2 * np.pi * 8 * t)
+
+    psd = calc.compute_psd_column(signal, method="welch")
+
+    assert psd.shape == config.FREQ_BINS.shape
+    assert np.isfinite(psd).all()

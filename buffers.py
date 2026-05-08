@@ -112,9 +112,14 @@ class DSABuffer:
         pan_sec = max(pan_sec, self.t0)
         buf = self.buffers[res]
         data = buf["data"]
+        last_slot = buf["last_slot"]
+        if last_slot is None:
+            return float(self.t0), np.full((effective_width, height), np.nan, dtype=np.float32), res
+
         slot_start = int(math.floor((pan_sec - self.t0) / res))
         slot_start = max(self._get_oldest_slot(res) or 0, slot_start)
-        slot_end = min(slot_start + effective_width - 1, buf["last_slot"])
+        slot_start = min(slot_start, last_slot)
+        slot_end = min(slot_start + effective_width - 1, last_slot)
         actual_width = slot_end - slot_start + 1
         t_start = self.t0 + slot_start * res
         frame = np.full((actual_width, height), np.nan, dtype=np.float32)
