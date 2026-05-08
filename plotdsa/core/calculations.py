@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.signal import welch, firwin, lfilter
 from scipy.signal.windows import dpss
-import config
+from .. import config
 
 
 class DSACalculator:

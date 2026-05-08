@@ -10,8 +10,8 @@ from PySide6.QtSvg import QSvgRenderer
 import time
 
 import math
-from buffers import DSABuffer
-import config
+from ..core.buffers import DSABuffer
+from .. import config
 
 SETTINGS_GEAR_SVG = """
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -152,31 +152,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.setYRange(config.LOWEST_FREQ_HZ, max_f, padding=0)
         self.freq_axis.set_max_freq(max_f)
 
-    def _init_freq_buttons(self):
-        from PySide6.QtWidgets import QGraphicsProxyWidget
-
-        self.btn_container, buttons = self._create_adjust_button_container(
-            spacing=2,
-            plus_handler=lambda: self._adjust_max_freq(1),
-            minus_handler=lambda: self._adjust_max_freq(-1),
-        )
-        self.btn_plus, self.btn_minus = buttons
-
-        self.proxy = QGraphicsProxyWidget()
-        self.proxy.setWidget(self.btn_container)
-        self.proxy.setParentItem(self.plot.vb)
-        self.plot.vb.setFlag(pg.GraphicsWidget.ItemClipsChildrenToShape, False)
-
-        self.plot.vb.sigResized.connect(self._update_button_pos)
-        self._update_button_pos()
-
-    def _update_button_pos(self):
-        # Position at the left of the Y-axis
-        # The ViewBox (vb) is the plotting area.
-        # To move buttons to the left of it (where the Y-axis is), we use a negative X.
-        # -45 seems like a good offset to clear the axis labels/ticks.
-        self.proxy.setPos(-52, -16)
-        self.proxy.setZValue(100)  # Ensure it's above other elements
 
     def _style_adjust_button(self, button):
         button.setFixedSize(32, 32)
@@ -229,9 +204,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.colorbar.setImageItem(self.image)
         self.colorbar.setContentsMargins(0,24,0,24)
         self.addItem(self.colorbar, row=0, col=1)
-        self.ci.layout.setColumnStretchFactor(0, 10)
-        self.ci.layout.setColumnStretchFactor(1, 1)
-        self.ci.layout.setContentsMargins(0, 0, 40, 0)
+
 
     def _init_settings_controls(self):
         from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
@@ -342,7 +315,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         value_label = QLabel()
         value_label.setProperty("role", "value")
         value_label.setAlignment(Qt.AlignCenter)
-        value_label.setFixedWidth(50)
+        value_label.setFixedWidth(56)
         row.addWidget(value_label)
         self.dsa_value_labels[field_name] = (value_label, formatter)
 
@@ -403,51 +376,6 @@ class DSAView(pg.GraphicsLayoutWidget):
             or self.settings_popup.isAncestorOf(target)
             or self.settings_button.isAncestorOf(target)
         )
-
-    def _create_colorbar_button_group(self, plus_handler, minus_handler):
-        from PySide6.QtWidgets import QGraphicsProxyWidget
-
-        container, _ = self._create_adjust_button_container(
-            spacing=4,
-            plus_handler=plus_handler,
-            minus_handler=minus_handler,
-        )
-
-        proxy = QGraphicsProxyWidget(self.colorbar)
-        proxy.setWidget(container)
-        proxy.setZValue(100)
-        return proxy
-
-    def _create_adjust_button_container(self, spacing, plus_handler, minus_handler):
-        from PySide6.QtWidgets import QPushButton, QFrame, QVBoxLayout
-
-        container = QFrame()
-        container.setStyleSheet("background: transparent; border: none;")
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing)
-
-        buttons = []
-        for label, handler in (("+", plus_handler), ("-", minus_handler)):
-            button = QPushButton(label, container)
-            self._style_adjust_button(button)
-            button.clicked.connect(handler)
-            layout.addWidget(button)
-            buttons.append(button)
-
-        return container, tuple(buttons)
-
-    def _position_colorbar_buttons(self):
-        if not hasattr(self, "colorbar_max_btn_proxy") or not hasattr(self, "colorbar_min_btn_proxy"):
-            return
-
-        rect = self.colorbar.boundingRect()
-        top_size = self.colorbar_max_btn_proxy.boundingRect()
-        bottom_size = self.colorbar_min_btn_proxy.boundingRect()
-        x_pos = max(0, rect.width() - max(top_size.width(), bottom_size.width()) + 12)
-
-        self.colorbar_max_btn_proxy.setPos(x_pos, 5)
-        self.colorbar_min_btn_proxy.setPos(x_pos, max(0, rect.height() - bottom_size.height())-8)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

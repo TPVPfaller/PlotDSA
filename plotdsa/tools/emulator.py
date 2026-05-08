@@ -4,8 +4,9 @@ import os
 from datetime import datetime, timedelta
 import math
 from pylsl import StreamInfo, StreamOutlet
-import config
 import random
+
+from .. import config
 
 # =========================
 # Configuration

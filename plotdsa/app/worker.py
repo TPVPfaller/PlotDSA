@@ -3,9 +3,9 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot
-from buffers import EEGBuffer
-from input_output import EEGStream, Output
-import config
+from ..core.buffers import EEGBuffer
+from ..io.input_output import EEGStream, Output
+from .. import config
 
 
 class ProcessingWorker(QObject):
@@ -48,11 +48,10 @@ class ProcessingWorker(QObject):
                 continue
 
             samples = self.stream.read_lsl_samples()
-            method = 'multitaper' if self.user_config.use_multitaper else 'welch'
-            dsa_columns, checked_samples = self.eeg_buffer.get_dsa_columns(samples, method=method)
+            self.new_samples.emit([sample[1] for sample in samples])
 
-            if checked_samples:
-                self.new_samples.emit(checked_samples)
+            method = 'multitaper' if self.user_config.use_multitaper else 'welch'
+            dsa_columns = self.eeg_buffer.get_dsa_columns(samples, method=method)
 
             for ts, psd in dsa_columns:
                 if psd is None:

@@ -8,7 +8,7 @@ from datetime import datetime as dt
 import numpy as np
 from pylsl import StreamInlet, resolve_byprop
 
-import config
+from .. import config
 
 
 # fix lsl for single file .exe

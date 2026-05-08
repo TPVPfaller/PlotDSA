@@ -5,8 +5,8 @@ from collections import deque
 
 import numpy as np
 
-import config
-from calculations import DSACalculator
+from .. import config
+from .calculations import DSACalculator
 
 
 class DSABuffer:
@@ -156,15 +156,13 @@ class EEGBuffer:
 
     def get_dsa_columns(self, data, method="multitaper"):
         if data is None or len(data) == 0:
-            return [], []
+            return []
 
         output_dsa = []
-        samples = []
 
         for ts, eeg in data:
             diff = self._get_ts_diff(ts, eeg)
             if diff > config.EEG_TIME_DIFF_TOLERANCE:
-                samples.append(np.nan)
                 if diff > config.DSA_TIME_DIFF_TOLERANCE:
                     print("Timestamp difference")
                     self.eeg_values.clear()
@@ -175,7 +173,6 @@ class EEGBuffer:
             self.eeg_values.append(eeg)
             self.timestamps.append(ts)
             self.last_ts = ts
-            samples.append(float(eeg))
 
             while len(self.eeg_values) >= self.window_len:
                 window = np.asarray(self.eeg_values[:self.window_len], dtype=np.float32)
@@ -185,7 +182,7 @@ class EEGBuffer:
                 del self.eeg_values[:self.hop_len]
                 del self.timestamps[:self.hop_len]
 
-        return output_dsa, samples
+        return output_dsa
 
     def apply_config(self, window_sec, overlap):
         self.window_sec = window_sec
