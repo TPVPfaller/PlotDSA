@@ -57,14 +57,14 @@ class DSACalculator:
         fs = config.SAMPLE_RATE_HZ
 
         tapers, _ = dpss(nw, NW=TW, Kmax=K, return_ratios=True) # (K, nw)
-        spect = np.zeros((N, nw)) # N//2+1 because fft output is Hermitian-symmetric
+        spect = np.zeros((N, nw//2+1)) # N//2+1 because fft output is Hermitian-symmetric
 
         for i in range(N):
             # tapers is (K, nw), eeg_values[i] is (nw,)
             window_data = eeg_values[i]
             tapered_data = tapers * window_data # Broadcasting (K, nw) * (nw,) -> (K, nw)
             
-            fourier = np.fft.fft(tapered_data, n=nw, axis=1) # shape: (K, nw//2+1)
+            fourier = np.fft.rfft(tapered_data, n=nw, axis=1) # shape: (K, nw//2+1)
 
             # Power per taper
             power = (np.abs(fourier) ** 2) / fs
@@ -99,7 +99,7 @@ class DSACalculator:
                 noverlap=None, # If None then overlap is 50%
                 return_onesided=True
             )
-        psd = psd[:251]
+
         psd = psd[config.FREQ_MASK]
 
         if not np.all(psd):
