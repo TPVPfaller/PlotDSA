@@ -417,9 +417,30 @@ class DSAView(pg.GraphicsLayoutWidget):
     def _target_resolution(self, visible_width_sec, divisor):
         return max(1.0, visible_width_sec / divisor)
 
+    def _render_grid(self, visible_width_sec, target_divisor=2160.0):
+        target_resolution = self._target_resolution(visible_width_sec, target_divisor)
+        actual_res = min(self.dsa_buffer.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
+        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
+        n_columns = max(1, int(n_time_bins / actual_res))
+        return actual_res, n_columns
+
+    def _live_window_start(self, visible_width_sec):
+        if self.dsa_buffer.t0 is None:
+            return self.dsa_buffer.get_oldest_timestamp()
+
+        actual_res, n_columns = self._render_grid(visible_width_sec)
+        buf = self.dsa_buffer.buffers[actual_res]
+        last_slot = buf["last_slot"]
+        if last_slot is None:
+            return self.dsa_buffer.get_oldest_timestamp()
+
+        oldest_slot = self.dsa_buffer._get_oldest_slot(actual_res) or 0
+        start_slot = max(oldest_slot, last_slot - n_columns + 1)
+        return self.dsa_buffer.t0 + start_slot * actual_res
+
     def _pan_limits(self, visible_width_sec):
         min_offset = self.dsa_buffer.get_oldest_timestamp()
-        max_offset = max(min_offset, self.dsa_buffer.get_newest_timestamp() - visible_width_sec)
+        max_offset = max(min_offset, self._live_window_start(visible_width_sec))
         return min_offset, max_offset
 
     def _current_pan_start(self, visible_width_sec):
@@ -436,7 +457,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             return
 
         self._pan_sec = float(np.clip(self._pan_sec, min_offset, max_offset))
-        if self._pan_sec >= max_offset - 0.05:
+        if not self._dragging and self._pan_sec >= max_offset - 0.05:
             self.live_mode = True
             self._pan_sec = max_offset
 
@@ -507,6 +528,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         current_start = self._current_pan_start(visible_width_sec)
         self.live_mode = False
         self._pan_sec = current_start + visible_width_sec * delta_percent
+
+        self.update()
         self.update()
 
     def clear_data(self):
@@ -535,6 +558,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             width_px = self.plot.width()
             dt = (delta.x() / width_px) * visible_width_sec if width_px else 0
             self._pan_sec = self._current_pan_start(visible_width_sec) - dt
+            print(f"Pan to {self._pan_sec - self.dsa_buffer.t0:.2f} seconds")
             self.live_mode = False
             self.update()
 
@@ -549,6 +573,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         if self._dragging:
             self._dragging = False
             self._last_mouse_pos = None
+            if self.dsa_buffer.t0 is not None:
+                self.update()
             ev.accept()
 
     def event(self, ev):
@@ -575,16 +601,20 @@ class DSAView(pg.GraphicsLayoutWidget):
     def apply_zoom(self, new_minutes):
         if new_minutes is not None:
             old_width = self._visible_width_sec()
-            old_start = self._current_pan_start(old_width)
+            displayed_start = self.t0
+            old_res, old_columns = self._render_grid(old_width)
             new_width = new_minutes * 60.0
+            new_res, new_columns = self._render_grid(new_width)
             self.display_minutes = new_minutes
 
             if self.dsa_buffer.t0 is not None:
                 min_offset, max_offset = self._pan_limits(new_width)
                 if self.live_mode:
                     self._pan_sec = max_offset
+                elif old_res == new_res and old_columns == new_columns:
+                    self._pan_sec = float(np.clip(displayed_start, min_offset, max_offset))
                 else:
-                    center = old_start + old_width / 2.0
+                    center = displayed_start + old_width / 2.0
                     self._pan_sec = float(np.clip(center - new_width / 2.0, min_offset, max_offset))
         self.update()
 

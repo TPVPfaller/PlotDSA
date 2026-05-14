@@ -128,7 +128,6 @@ class DSABuffer:
             column = data.get(slot)
             if column is not None:
                 frame[frame_idx] = column[:height]
-
         return float(t_start), frame, res
 
 
