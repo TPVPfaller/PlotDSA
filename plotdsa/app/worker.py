@@ -1,5 +1,4 @@
 import time
-import math
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -21,6 +20,7 @@ class ProcessingWorker(QObject):
 
         self.stream = EEGStream()
         self._last_connection_state = self.stream.receiving
+        self._dsa_time_origin = None
         self.eeg_buffer = EEGBuffer(
             self.user_config.window_sec,
             self.user_config.window_overlap
@@ -58,12 +58,7 @@ class ProcessingWorker(QObject):
                 if psd is None:
                     continue
 
-                # Calculate how many update steps this window covers.
-                # We use ceil to ensure we bridge the gap to the next column's expected timestamp.
-                hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
-                steps = math.ceil(hop_sec / config.TIME_RESOLUTION) + 1
-                # Ensure at least one step is filled
-                steps = max(1, steps)
+                steps = self._get_dsa_steps(ts)
 
                 duration = steps * config.TIME_RESOLUTION
 
@@ -80,3 +75,15 @@ class ProcessingWorker(QObject):
     def stop(self):
         self.running = False
         self._io_executor.shutdown(wait=True)
+
+    def _get_dsa_steps(self, ts):
+        current_slot = self._get_dsa_slot(ts)
+        hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
+        next_slot = self._get_dsa_slot(ts + hop_sec)
+        return max(1, next_slot - current_slot)
+
+    def _get_dsa_slot(self, ts):
+        if self._dsa_time_origin is None:
+            self._dsa_time_origin = ts
+        offset = (ts - self._dsa_time_origin) / config.TIME_RESOLUTION
+        return int(offset + 0.5)
