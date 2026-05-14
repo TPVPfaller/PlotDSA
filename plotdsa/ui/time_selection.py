@@ -34,7 +34,7 @@ class TimeSelectionDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Start Time")
-        self.setMinimumSize(600, 450)
+        self.setMinimumSize(400, 350)
 
         self._selected_dt = self._default_datetime()
         self._building_ui = False
@@ -62,7 +62,7 @@ class TimeSelectionDialog(QDialog):
                 font-weight: 600;
             }}
             QPushButton#presetButton {{
-                min-height: 60px;
+                min-height: 40px;
                 padding: 8px 16px;
                 border-radius: 10px;
                 color: palette(button-text);
@@ -81,6 +81,7 @@ class TimeSelectionDialog(QDialog):
                 background: palette(mid);
             }}
             QSlider::sub-page:horizontal {{
+                height: 20px;
                 border-radius: 10px;
                 background: palette(highlight);
             }}
@@ -94,38 +95,27 @@ class TimeSelectionDialog(QDialog):
             }}
             QLabel#timeDisplay {{
                 padding: 10px;
-                font-size: {config.FONT_SIZE + 16}px;
+                font-size: {config.FONT_SIZE + 14}px;
                 font-weight: 700;
-            }}
-            QLabel#sectionLabel {{
-                font-size: {config.FONT_SIZE + 2}px;
-                font-weight: 600;
-                color: palette(window-text);
             }}
         """)
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(24, 24, 24, 24)
-        root_layout.setSpacing(20)
-
-        preset_grid = QHBoxLayout()
-        preset_grid.setSpacing(12)
+        root_layout.setSpacing(12)
 
         # Split presets into two rows if needed, but for touchscreen let's use a flow or just one big row/grid
         # Given 6 presets, let's do 2 rows of 3
         v_presets = QVBoxLayout()
         row1 = QHBoxLayout()
-        row2 = QHBoxLayout()
         for i, (label, offset) in enumerate(self.PRESET_OFFSETS):
             button = QPushButton(label)
             button.setObjectName("presetButton")
             button.clicked.connect(lambda _, delta=offset: self._apply_preset(delta))
-            if i < 3:
-                row1.addWidget(button)
-            else:
-                row2.addWidget(button)
+
+            row1.addWidget(button)
+
         v_presets.addLayout(row1)
-        v_presets.addLayout(row2)
         root_layout.addLayout(v_presets)
 
         # Slider Section
@@ -134,11 +124,6 @@ class TimeSelectionDialog(QDialog):
         slider_layout = QVBoxLayout(slider_frame)
         slider_layout.setContentsMargins(20, 20, 20, 20)
         slider_layout.setSpacing(15)
-
-        slider_header = QLabel("Adjust Hours Ago:")
-        slider_header.setObjectName("sectionLabel")
-        slider_header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        slider_layout.addWidget(slider_header)
 
         self.time_display = QLabel()
         self.time_display.setObjectName("timeDisplay")
@@ -231,7 +216,7 @@ class TimeSelectionDialog(QDialog):
         else:
             relative = f"{minutes}m ago"
 
-        self.preview_label.setText(selected_dt.strftime(f"%a, %d %b %Y  %H:%M  |  {relative}"))
+        self.preview_label.setText(selected_dt.strftime(f"%a, %d %b %H:%M  |  {relative}"))
 
     def selected_datetime(self):
         return self._selected_dt
@@ -239,6 +224,8 @@ class TimeSelectionDialog(QDialog):
     def _update_time_display(self, hours_ago):
         if hours_ago == 0:
             text = "Now"
+        elif hours_ago == 1:
+            text = "1 hour ago"
         else:
             text = f"{hours_ago} hours ago"
         self.time_display.setText(text)

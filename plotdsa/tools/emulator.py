@@ -6,12 +6,22 @@ import math
 from pylsl import StreamInfo, StreamOutlet
 import random
 
-from .. import config
+import sys
+from pathlib import Path
+
+# Add project root to sys.path for direct execution
+if __name__ == "__main__":
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+try:
+    from .. import config
+except (ImportError, ValueError):
+    from plotdsa import config
 
 # =========================
 # Configuration
 # =========================
-DATA_DIR = "Entropy_Data"
+DATA_DIR = "..\..\Entropy_Data"
 
 STREAM_NAME = "EEG_DATA"
 STREAM_TYPE = "EEG"
@@ -85,7 +95,7 @@ def main():
 
                     # Push to LSL
                     if idx % SAMPLE_RATE_HZ == 0:
-                        time.sleep(0.1)
+                        time.sleep(0.99)
                         for s in samples:
                             outlet.push_sample([s])
                         samples = []
