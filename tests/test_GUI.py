@@ -1,5 +1,6 @@
 import pytest
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QCloseEvent
 from main import DSAApplication, DSAView, PSDView, EEGView, SettingsDialog
 from config import UserConfig
 
@@ -29,11 +30,14 @@ def dsa_app(qtbot, app, monkeypatch):
             pass
 
     class DummyThread:
+        def __init__(self):
+            self.running = False
+
         def quit(self):
             pass
 
-        def wait(self):
-            pass
+        def isRunning(self):
+            return self.running
 
     def fake_init_worker(self):
         self.thread = DummyThread()
@@ -126,3 +130,40 @@ def test_on_new_samples_is_ignored_when_eeg_view_is_hidden(dsa_app):
 
     assert len(dsa_app.eeg_view._pending) == 0
     assert dsa_app._last_data_receive_time == before
+
+
+def test_close_event_waits_asynchronously_for_running_worker(dsa_app):
+    class ClosingWorker:
+        def __init__(self):
+            self.stop_called = False
+
+        def stop(self):
+            self.stop_called = True
+
+    class ClosingThread:
+        def __init__(self):
+            self.running = True
+            self.quit_called = False
+
+        def quit(self):
+            self.quit_called = True
+
+        def isRunning(self):
+            return self.running
+
+    dsa_app.worker = ClosingWorker()
+    dsa_app.thread = ClosingThread()
+
+    first_event = QCloseEvent()
+    dsa_app.closeEvent(first_event)
+
+    assert dsa_app.worker.stop_called is True
+    assert dsa_app.thread.quit_called is True
+    assert first_event.isAccepted() is False
+    assert dsa_app.status_timer.isActive() is False
+
+    dsa_app.thread.running = False
+    second_event = QCloseEvent()
+    dsa_app.closeEvent(second_event)
+
+    assert second_event.isAccepted() is True

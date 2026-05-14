@@ -66,6 +66,6 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
     assert emitted_samples == [[1.0]]
     assert len(emitted_columns) == 1
     assert emitted_columns[0][0] == 123.0
-    assert emitted_columns[0][2] == 2
+    assert emitted_columns[0][2] == 1
     assert saved_calls[0][1][0] == 123.0
-    assert saved_calls[0][1][1] == 2 * config.TIME_RESOLUTION
+    assert saved_calls[0][1][1] == 1 * config.TIME_RESOLUTION

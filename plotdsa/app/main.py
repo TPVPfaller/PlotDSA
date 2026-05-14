@@ -49,6 +49,7 @@ class DSAApplication(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._closing = False
 
         self.setWindowTitle("EEG Density Spectral Array")
         self.resize(1000, 650)
@@ -304,10 +305,37 @@ class DSAApplication(QMainWindow):
 
         self._update_status()
 
+    def _thread_is_running(self):
+        return bool(getattr(self.thread, "isRunning", lambda: False)())
+
+    def _finish_close_when_worker_stops(self):
+        if not self._closing:
+            return
+        if self._thread_is_running():
+            QTimer.singleShot(50, self._finish_close_when_worker_stops)
+            return
+        self.close()
+
     def closeEvent(self, event):
+        if self._closing:
+            if self._thread_is_running():
+                event.ignore()
+            else:
+                event.accept()
+            return
+
+        self._closing = True
+        if hasattr(self, "status_timer"):
+            self.status_timer.stop()
+        self.setEnabled(False)
         self.worker.stop()
         self.thread.quit()
-        self.thread.wait()
+
+        if self._thread_is_running():
+            event.ignore()
+            QTimer.singleShot(50, self._finish_close_when_worker_stops)
+            return
+
         event.accept()
 
 

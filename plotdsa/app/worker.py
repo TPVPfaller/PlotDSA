@@ -34,47 +34,49 @@ class ProcessingWorker(QObject):
     @Slot()
     def run(self):
         next_time = time.time()
-        while self.running:
+        try:
+            while self.running:
 
-            if self._new_config:
-                self.user_config = self._new_config
-                self._new_config = None
-                self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
-            if not self.stream.receiving:
-                self.stream.connect()
-                # Emit on change
-                if self.stream.receiving != self._last_connection_state:
-                    self._last_connection_state = self.stream.receiving
-                time.sleep(0.5)
-                continue
-
-            samples = self.stream.read_lsl_samples()
-            self.new_samples.emit([sample[1] for sample in samples])
-
-            method = 'multitaper' if self.user_config.use_multitaper else 'welch'
-            dsa_columns = self.eeg_buffer.get_dsa_columns(samples, method=method)
-
-            for ts, psd in dsa_columns:
-                if psd is None:
+                if self._new_config:
+                    self.user_config = self._new_config
+                    self._new_config = None
+                    self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
+                if not self.stream.receiving:
+                    self.stream.connect()
+                    # Emit on change
+                    if self.stream.receiving != self._last_connection_state:
+                        self._last_connection_state = self.stream.receiving
+                    time.sleep(0.5)
                     continue
 
-                steps = self._get_dsa_steps(ts)
+                samples = self.stream.read_lsl_samples()
+                self.new_samples.emit([sample[1] for sample in samples])
 
-                duration = steps * config.TIME_RESOLUTION
+                method = 'multitaper' if self.user_config.use_multitaper else 'welch'
+                dsa_columns = self.eeg_buffer.get_dsa_columns(samples, method=method)
 
-                self.new_dsa_column.emit(ts, psd, steps)
+                for ts, psd in dsa_columns:
+                    if psd is None:
+                        continue
 
-                self._io_executor.submit(Output.save_psd_to_csv, ts, duration, psd)
+                    steps = self._get_dsa_steps(ts)
 
-            next_time += config.TIME_RESOLUTION
-            sleep = max(0.0, next_time - time.time())
-            time.sleep(sleep)
+                    duration = steps * config.TIME_RESOLUTION
+
+                    self.new_dsa_column.emit(ts, psd, steps)
+
+                    self._io_executor.submit(Output.save_psd_to_csv, ts, duration, psd)
+
+                next_time += config.TIME_RESOLUTION
+                sleep = max(0.0, next_time - time.time())
+                time.sleep(sleep)
+        finally:
+            self._io_executor.shutdown(wait=True)
 
 
 
     def stop(self):
         self.running = False
-        self._io_executor.shutdown(wait=True)
 
     def _get_dsa_steps(self, ts):
         current_slot = self._get_dsa_slot(ts)
