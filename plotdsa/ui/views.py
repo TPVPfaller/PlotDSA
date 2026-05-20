@@ -5,7 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem, GridItem
 from PySide6.QtCore import QByteArray, QSize, Qt, QEvent, QTimer
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 import time
 
@@ -38,6 +38,12 @@ SETTINGS_GEAR_SVG = """
 """
 
 LEFT_AXIS_WIDTH = 45
+AXIS_TEXT_COLOR = config.TEXT_COLOR_STR
+AXIS_TICK_FONT_SIZE_PT = config.FONT_SIZE - 7
+AXIS_LABEL_STYLE = {
+    "color": AXIS_TEXT_COLOR,
+    "font-size": f"{config.FONT_SIZE - 6}pt",
+}
 
 
 def create_settings_gear_icon(size=18):
@@ -56,11 +62,25 @@ def set_uniform_left_axis_width(plot_with_axis):
     plot_with_axis.getAxis("left").setWidth(LEFT_AXIS_WIDTH)
 
 
+def style_axis(axis):
+    axis.setPen(AXIS_TEXT_COLOR)
+    axis.setTextPen(AXIS_TEXT_COLOR)
+    tick_font = QFont()
+    tick_font.setPointSize(AXIS_TICK_FONT_SIZE_PT)
+    axis.setTickFont(tick_font)
+
+
+def set_axis_label(plot_item, axis_name, text, units=None):
+    plot_item.setLabel(axis_name, text, units=units, **AXIS_LABEL_STYLE)
+    style_axis(plot_item.getAxis(axis_name))
+
+
 # ------------------ DSA View ------------------ #
 class FrequencyAxis(pg.AxisItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_freq = None
+        style_axis(self)
 
     def set_max_freq(self, max_f):
         self.max_freq = float(max_f)
@@ -142,7 +162,8 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.time_axis = pg.DateAxisItem("bottom")
         self.freq_axis = FrequencyAxis("left")
         self.plot = self.addPlot(row=0, col=0, axisItems={"bottom": self.time_axis, "left": self.freq_axis})
-        self.plot.setLabel("left", "Frequency", units="Hz")
+        set_axis_label(self.plot, "left", "Frequency", units="Hz")
+        style_axis(self.time_axis)
         set_uniform_left_axis_width(self.plot)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
@@ -161,21 +182,21 @@ class DSAView(pg.GraphicsLayoutWidget):
 
 
     def _style_adjust_button(self, button):
-        button.setFixedSize(32, 32)
-        button.setStyleSheet("""
-            QPushButton {
+        button.setFixedSize(36, 36)
+        button.setStyleSheet(f"""
+            QPushButton {{
                 background-color: rgba(60, 60, 60, 150);
                 color: white;
                 border-radius: 4px;
                 font-weight: bold;
-                font-size: 22px;
-            }
-            QPushButton:hover {
+                font-size: {config.FONT_SIZE + 6}px;
+            }}
+            QPushButton:hover {{
                 background-color: rgba(80, 80, 80, 200);
-            }
-            QPushButton:pressed {
+            }}
+            QPushButton:pressed {{
                 background-color: rgba(100, 100, 100, 255);
-            }
+            }}
         """)
 
     def _adjust_max_freq(self, delta):
@@ -205,13 +226,18 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.colorbar = ColorBarItem(
             values=(self.user_config.psd_db_min, self.user_config.psd_db_max),
             colorMap=self.cmap,
-            label="Power (dB)",
             interactive=False,
         )
         self.colorbar.setImageItem(self.image)
-        self.colorbar.setContentsMargins(0,24,10,24)
+        self.colorbar.setContentsMargins(0,24,15,24)
         self.addItem(self.colorbar, row=0, col=1)
 
+        cb_axis = self.colorbar.getAxis("left")
+        style_axis(cb_axis)
+        cb_axis.setLabel("Power", units="dB", **AXIS_LABEL_STYLE)
+
+        number_axis = self.colorbar.getAxis("right")
+        style_axis(number_axis)
 
     def _init_settings_controls(self):
         from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
@@ -241,36 +267,36 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.settings_popup = QFrame(self.viewport())
         self.settings_popup.setObjectName("dsaSettingsPopup")
         self.settings_popup.hide()
-        self.settings_popup.setStyleSheet("""
-            QFrame#dsaSettingsPopup {
+        self.settings_popup.setStyleSheet(f"""
+            QFrame#dsaSettingsPopup {{
                 background-color: rgba(28, 28, 28, 245);
                 border: 1px solid rgba(255, 255, 255, 35);
                 border-radius: 8px;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 color: white;
-                font-size: 12px;
+                font-size: {config.FONT_SIZE}px;
                 font-weight: 600;
-            }
-            QPushButton {
+            }}
+            QPushButton {{
                 background-color: rgba(60, 60, 60, 170);
                 color: white;
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
-                font-size: 16px;
+                font-size: {config.FONT_SIZE + 4}px;
                 padding: 0px;
                 text-align: center;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: rgba(80, 80, 80, 210);
-            }
-            QLabel[role="value"] {
+            }}
+            QLabel[role="value"] {{
                 border-radius: 4px;
-                font-size: 13px;
+                font-size: {config.FONT_SIZE + 1}px;
                 font-weight: bold;
                 padding: 6px 8px;
-            }
+            }}
         """)
 
         popup_layout = QVBoxLayout(self.settings_popup)
@@ -315,19 +341,19 @@ class DSAView(pg.GraphicsLayoutWidget):
         row.setSpacing(6)
 
         minus_button = QPushButton("-")
-        minus_button.setFixedSize(32, 32)
+        minus_button.setFixedSize(36, 36)
         minus_button.clicked.connect(minus_handler)
         row.addWidget(minus_button)
 
         value_label = QLabel()
         value_label.setProperty("role", "value")
         value_label.setAlignment(Qt.AlignCenter)
-        value_label.setFixedWidth(56)
+        value_label.setFixedWidth(70)
         row.addWidget(value_label)
         self.dsa_value_labels[field_name] = (value_label, formatter)
 
         plus_button = QPushButton("+")
-        plus_button.setFixedSize(32, 32)
+        plus_button.setFixedSize(36, 36)
         plus_button.clicked.connect(plus_handler)
         row.addWidget(plus_button)
 
@@ -364,12 +390,13 @@ class DSAView(pg.GraphicsLayoutWidget):
             self._position_settings_popup()
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.MouseButtonPress and self.settings_popup.isVisible():
+        settings_popup = getattr(self, "settings_popup", None)
+        if settings_popup is not None and event.type() == QEvent.MouseButtonPress and settings_popup.isVisible():
             from PySide6.QtWidgets import QApplication
 
             target = QApplication.widgetAt(event.globalPosition().toPoint())
             if not self._settings_click_is_inside(target):
-                self.settings_popup.hide()
+                settings_popup.hide()
 
         return super().eventFilter(obj, event)
 
@@ -415,13 +442,12 @@ class DSAView(pg.GraphicsLayoutWidget):
         return self.display_minutes * 60.0
 
     def _target_resolution(self, visible_width_sec, divisor):
-        return max(1.0, visible_width_sec / divisor)
+        return max(config.TIME_RESOLUTION, visible_width_sec / divisor)
 
     def _render_grid(self, visible_width_sec, target_divisor=2160.0):
         target_resolution = self._target_resolution(visible_width_sec, target_divisor)
         actual_res = min(self.dsa_buffer.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
-        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
-        n_columns = max(1, int(n_time_bins / actual_res))
+        n_columns = max(1, int(visible_width_sec / actual_res))
         return actual_res, n_columns
 
     def _live_window_start(self, visible_width_sec):
@@ -463,11 +489,10 @@ class DSAView(pg.GraphicsLayoutWidget):
 
     def _get_visible_dsa_data(self, target_divisor):
         visible_width_sec = self._visible_width_sec()
-        n_time_bins = max(1, int(visible_width_sec / config.TIME_RESOLUTION))
         self._sync_pan_window(visible_width_sec)
 
         self.t0, self.dsa_rect, actual_res = self.dsa_buffer.get_view_at(
-            width=n_time_bins,
+            width=visible_width_sec,
             height=len(self.freq_bins),
             pan_sec=self._pan_sec,
             target_resolution=self._target_resolution(visible_width_sec, target_divisor),
@@ -558,7 +583,6 @@ class DSAView(pg.GraphicsLayoutWidget):
             width_px = self.plot.width()
             dt = (delta.x() / width_px) * visible_width_sec if width_px else 0
             self._pan_sec = self._current_pan_start(visible_width_sec) - dt
-            print(f"Pan to {self._pan_sec - self.dsa_buffer.t0:.2f} seconds")
             self.live_mode = False
             self.update()
 
@@ -636,8 +660,8 @@ class PSDView(pg.PlotWidget):
         self.user_config = user_config
         self.on_config_change = on_config_change
 
-        self.setLabel("bottom", "Frequency", units="Hz")
-        self.setLabel("left", "Power", units="dB")
+        set_axis_label(self.plotItem, "bottom", "Frequency", units="Hz")
+        set_axis_label(self.plotItem, "left", "Power", units="dB")
         set_uniform_left_axis_width(self.plotItem)
         self.getPlotItem().setContentsMargins(10, 10, 0, 5)
         self.setMinimumHeight(config.MIN_PSD_HEIGHT)
@@ -670,8 +694,15 @@ class EEGView(pg.PlotWidget):
         self.on_config_change = on_config_change
 
         # --- Plot setup ---
-        self.getPlotItem().setContentsMargins(10, 10, 60, 3)
+        self.getPlotItem().setContentsMargins(10, 10, 60, 10)
         self.getPlotItem().setLabel("left", "EEG", units="µV")
+        self.getPlotItem().setLabel("bottom", "Time", units="s")
+        self.getPlotItem().getAxis("bottom").setPen('w')
+        self.getPlotItem().getAxis("bottom").setTextPen('w')
+        self.getPlotItem().getAxis("left").setPen('w')
+        self.getPlotItem().getAxis("left").setTextPen('w')
+        set_axis_label(self.plotItem, "left", "EEG", units="\N{MICRO SIGN}V")
+        set_axis_label(self.plotItem, "bottom", "Time", units="s")
         set_uniform_left_axis_width(self.plotItem)
         self.setMinimumHeight(config.MIN_EEG_HEIGHT)
         self.showGrid(x=False, y=False)
@@ -723,6 +754,7 @@ class EEGView(pg.PlotWidget):
         self._sample_period = 1.0 / config.SAMPLE_RATE_HZ
         self._last_rendered_head = -1
         self.seconds_visible = config.EEG_VIEW_WINDOW_SEC
+        self._paused_sample_count = 0
 
         # --- View limits ---
         self.setXRange(0, config.EEG_VIEW_WINDOW_SEC, padding=0)
@@ -735,10 +767,11 @@ class EEGView(pg.PlotWidget):
         self._timer.start(int(1000 / self.RENDER_HZ))
 
     def _init_settings_controls(self):
-        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
+        from PySide6.QtWidgets import QApplication, QFrame, QLabel, QStyle, QToolButton, QVBoxLayout
 
         self.sweep_buttons = {}
         self.amplitude_buttons = {}
+        self.is_paused = False
 
         self.settings_button = QToolButton(self.viewport())
         self.settings_button.setCursor(Qt.PointingHandCursor)
@@ -760,20 +793,45 @@ class EEGView(pg.PlotWidget):
         """)
         self.settings_button.clicked.connect(self._toggle_settings_popup)
 
+        self.pause_button = QToolButton(self.viewport())
+        self.pause_button.setCursor(Qt.PointingHandCursor)
+        self.pause_button.setCheckable(True)
+        self.pause_button.setFixedSize(28, 28)
+        self.pause_button.setStyleSheet("""
+            QToolButton {
+                background-color: rgba(60, 60, 60, 170);
+                border: 1px solid rgba(255, 255, 255, 45);
+                border-radius: 14px;
+            }
+            QToolButton:hover {
+                background-color: rgba(80, 80, 80, 220);
+            }
+            QToolButton:pressed {
+                background-color: rgba(100, 100, 100, 255);
+            }
+            QToolButton:checked {
+                background-color: rgba(0, 150, 220, 220);
+            }
+        """)
+        self.pause_button.clicked.connect(self._toggle_pause)
+        self._pause_icon = self.style().standardIcon(QStyle.SP_MediaPause)
+        self._play_icon = self.style().standardIcon(QStyle.SP_MediaPlay)
+        self._sync_pause_button()
+
         self.settings_popup = QFrame(self.viewport())
         self.settings_popup.setObjectName("eegSettingsPopup")
         self.settings_popup.hide()
-        self.settings_popup.setStyleSheet("""
-            QFrame#eegSettingsPopup {
+        self.settings_popup.setStyleSheet(f"""
+            QFrame#eegSettingsPopup {{
                 background-color: rgba(28, 28, 28, 245);
                 border: 1px solid rgba(255, 255, 255, 35);
                 border-radius: 8px;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 color: white;
-                font-size: 12px;
+                font-size: {config.FONT_SIZE}px;
                 font-weight: 600;
-            }
+            }}
         """)
 
         popup_layout = QVBoxLayout(self.settings_popup)
@@ -814,22 +872,22 @@ class EEGView(pg.PlotWidget):
             label = f"{option:g}" if isinstance(option, float) else str(option)
             button = QPushButton(label)
             button.setCheckable(True)
-            button.setFixedSize(42, 28)
-            button.setStyleSheet("""
-                QPushButton {
+            button.setFixedSize(50, 32)
+            button.setStyleSheet(f"""
+                QPushButton {{
                     background-color: rgba(60, 60, 60, 170);
                     color: white;
                     border: none;
                     border-radius: 4px;
                     font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
+                    font-size: {config.FONT_SIZE - 2}px;
+                }}
+                QPushButton:hover {{
                     background-color: rgba(80, 80, 80, 210);
-                }
-                QPushButton:checked {
+                }}
+                QPushButton:checked {{
                     background-color: rgba(0, 150, 220, 220);
-                }
+                }}
             """)
             button.clicked.connect(lambda _, value=option: handler(value))
             layout.addWidget(button)
@@ -854,12 +912,58 @@ class EEGView(pg.PlotWidget):
         popup_y = max(0, self.settings_button.y())
         self.settings_popup.move(popup_x, popup_y)
 
+    def _toggle_pause(self):
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self._pending.clear()
+            self._paused_sample_count = 0
+        elif self._paused_sample_count:
+            self._refresh_display_from_latest_history()
+        self._sync_pause_button()
+
+    def _refresh_display_from_latest_history(self):
+        if not self.history:
+            self._paused_sample_count = 0
+            return
+
+        count = min(len(self.history), self.N)
+        latest = np.asarray(list(self.history)[-count:], dtype=np.float32)
+        display = np.full(self.N, np.nan, dtype=np.float32)
+        if self.display_head >= 0:
+            head = self.display_head
+        else:
+            head = count - 1
+        start_idx = (head - count + 1) % self.N
+
+        if start_idx + count <= self.N:
+            display[start_idx:start_idx + count] = latest
+        else:
+            first_part = self.N - start_idx
+            display[start_idx:] = latest[:first_part]
+            display[:count - first_part] = latest[first_part:]
+
+        self.display = display
+        self.display_head = head
+        self._paused_sample_count = 0
+        self._last_rendered_head = -1
+        self._render_frame()
+
+    def _sync_pause_button(self):
+        self.pause_button.blockSignals(True)
+        self.pause_button.setChecked(self.is_paused)
+        self.pause_button.setIcon(self._play_icon if self.is_paused else self._pause_icon)
+        self.pause_button.setIconSize(QSize(18, 18))
+        self.pause_button.setToolTip("Resume EEG" if self.is_paused else "Pause EEG")
+        self.pause_button.blockSignals(False)
+
     def _update_settings_button_pos(self):
         if not hasattr(self, "settings_button"):
             return
 
         x = max(0, self.viewport().width() - self.settings_button.width() - 12)
         self.settings_button.move(x, 8)
+        if hasattr(self, "pause_button"):
+            self.pause_button.move(x, self.settings_button.y() + self.settings_button.height() + 6)
         if self.settings_popup.isVisible():
             self._position_settings_popup()
 
@@ -880,8 +984,10 @@ class EEGView(pg.PlotWidget):
         return (
             target is self.settings_popup
             or target is self.settings_button
+            or target is self.pause_button
             or self.settings_popup.isAncestorOf(target)
             or self.settings_button.isAncestorOf(target)
+            or self.pause_button.isAncestorOf(target)
         )
 
     def _apply_y_range(self):
@@ -904,6 +1010,7 @@ class EEGView(pg.PlotWidget):
 
     def _set_eeg_y_max(self, max_uv):
         if max_uv == self.user_config.eeg_uv_range_max:
+            self._sync_amplitude_buttons()
             return
 
         if self.on_config_change is None:
@@ -916,6 +1023,7 @@ class EEGView(pg.PlotWidget):
 
     def _set_eeg_sweep_speed(self, mm_per_second):
         if mm_per_second == self.user_config.eeg_mm_per_second:
+            self._sync_sweep_buttons()
             return
 
         if self.on_config_change is None:
@@ -932,6 +1040,9 @@ class EEGView(pg.PlotWidget):
         QTimer.singleShot(0, self._update_time_scale)
 
     def _update_time_scale(self):
+        if not hasattr(self, "plotItem"):
+            return
+
         win = self.window()
         if win is None:
             return
@@ -945,7 +1056,10 @@ class EEGView(pg.PlotWidget):
 
         px_per_sec = self.user_config.eeg_mm_per_second * dpi / 25.4
 
-        view_box = self.getViewBox()
+        try:
+            view_box = self.getViewBox()
+        except AttributeError:
+            return
         if view_box is None:
             return
 
@@ -1040,6 +1154,11 @@ class EEGView(pg.PlotWidget):
     # ------------------------------------------------------------------
     def append_sample(self, val):
         if val is None:
+            return
+
+        if self.is_paused:
+            self.history.append(float(val))
+            self._paused_sample_count += 1
             return
 
         now = time.perf_counter()

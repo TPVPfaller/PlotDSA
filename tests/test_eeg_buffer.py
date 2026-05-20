@@ -103,6 +103,23 @@ def test_eegbuffer_produces_dsa_column():
     assert len(out) >= 1
 
 
+def test_eegbuffer_uses_exact_window_start_timestamp():
+    window_sec = 2.0
+    sample_rate = config.SAMPLE_RATE_HZ
+    buf = EEGBuffer(window_sec, 0.0)
+    base = datetime.datetime.now()
+
+    data = []
+    for i in range(int(window_sec * sample_rate)):
+        ts = base + datetime.timedelta(milliseconds=i * (1000 / sample_rate))
+        data.append((ts, 1.0))
+
+    out = buf.get_dsa_columns(data)
+
+    assert len(out) == 1
+    assert out[0][0] == base.timestamp()
+
+
 def test_apply_config_recomputes_window_and_hop_lengths():
     buf = EEGBuffer(window_sec=4.0, overlap=0.0)
 

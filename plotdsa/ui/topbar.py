@@ -27,7 +27,7 @@ def create_reset_icon(size=18):
 
 # ------------------ TopBar ------------------ #
 class TopBar(QWidget):
-    BUTTON_HEIGHT = 35
+    BUTTON_HEIGHT = 42
 
     def __init__(self, user_config, on_config_change, on_zoom_change, on_pan, on_calibrate):
         super().__init__()
@@ -66,28 +66,28 @@ class TopBar(QWidget):
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
-        self.zoom_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 6px;
+        self.zoom_slider.setStyleSheet(f"""
+            QSlider::groove:horizontal {{
+                height: 8px;
                 background: palette(mid);
-                border-radius: 3px;
-            }
-            QSlider::sub-page:horizontal {
+                border-radius: 4px;
+            }}
+            QSlider::sub-page:horizontal {{
                 background: palette(highlight);
-                border-radius: 3px;
-            }
-            QSlider::add-page:horizontal {
+                border-radius: 4px;
+            }}
+            QSlider::add-page:horizontal {{
                 background: palette(mid);
-                border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                width: 20px;
-                height: 20px;
-                margin: -7px 0;
-                border-radius: 10px;
+                border-radius: 4px;
+            }}
+            QSlider::handle:horizontal {{
+                width: 24px;
+                height: 24px;
+                margin: -8px 0;
+                border-radius: 12px;
                 background: palette(window-text);
                 border: 1px solid palette(base);
-            }
+            }}
         """)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)
         layout.addWidget(self.zoom_slider)
@@ -97,8 +97,8 @@ class TopBar(QWidget):
         layout.addWidget(self.calibrate_btn)
 
         self.reset_btn = self._create_button()
-        self.reset_btn.setIcon(create_reset_icon())
-        self.reset_btn.setIconSize(QSize(18, 18))
+        self.reset_btn.setIcon(create_reset_icon(size=22))
+        self.reset_btn.setIconSize(QSize(22, 22))
         self.reset_btn.clicked.connect(self._reset_calibration)
         layout.addWidget(self.reset_btn)
 

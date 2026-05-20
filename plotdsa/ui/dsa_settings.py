@@ -40,7 +40,7 @@ class SettingsDialog(QDialog):
         def add_slider(name, bounds, value, scale=1, unit: str = "", display_factor: float = 1.0,
                        decimals_override=None):
             nonlocal row_idx
-            row_h = 36  # taller for touch
+            row_h = 44  # taller for touch
 
             name_label = QLabel(name)
             name_label.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
@@ -54,11 +54,11 @@ class SettingsDialog(QDialog):
             slider.setValue(int(value * scale))
             slider.setFixedHeight(row_h)
             slider.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            slider.setStyleSheet("""
-                QSlider::groove:horizontal { height: 6px; background: palette(mid); border-radius: 3px; }
-                QSlider::sub-page:horizontal { background: palette(highlight); border-radius: 3px; }
-                QSlider::add-page:horizontal { background: palette(mid); border-radius: 3px; }
-                QSlider::handle:horizontal { width: 18px; height: 18px; margin: -6px 0; border-radius: 9px; background: palette(window-text); border: 1px solid palette(base); }
+            slider.setStyleSheet(f"""
+                QSlider::groove:horizontal {{ height: 8px; background: palette(mid); border-radius: 4px; }}
+                QSlider::sub-page:horizontal {{ background: palette(highlight); border-radius: 4px; }}
+                QSlider::add-page:horizontal {{ height: 8px; background: palette(mid); border-radius: 4px; }}
+                QSlider::handle:horizontal {{ width: 22px; height: 22px; margin: -7px 0; border-radius: 11px; background: palette(window-text); border: 1px solid palette(base); }}
             """)
 
             decimals = decimals_override if decimals_override is not None else max(0, int(round(math.log10(scale))) if scale > 1 else 0)
@@ -96,13 +96,13 @@ class SettingsDialog(QDialog):
 
         # --- Buttons row ---
         reset_btn = QPushButton("Reset to Defaults")
-        reset_btn.setMinimumHeight(35)
-        reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        reset_btn.setMinimumHeight(42)
+        reset_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px; color: white;")
         reset_btn.clicked.connect(self._reset_to_defaults)
 
         apply_btn = QPushButton("Apply and Close")
-        apply_btn.setMinimumHeight(35)
-        apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px;")
+        apply_btn.setMinimumHeight(42)
+        apply_btn.setStyleSheet(f"font-size: {config.FONT_SIZE}px; color: white;")
         apply_btn.clicked.connect(self._apply)
 
         button_bar = QWidget()

@@ -17,12 +17,17 @@ def test_get_view_at_basic_pan():
     psd = np.ones(len(f))
 
     t0 = 1000.0
-    for i in range(5):
+    for i in range(50):
         buf.append(t0 + i * config.TIME_RESOLUTION, psd * i)
 
     # Pan 2 time slots forward
-    pan_sec = t0 + 2.0
-    t_start, view, res = buf.get_view_at(width=3, height=10, pan_sec=pan_sec, target_resolution=1)
+    pan_sec = t0 + 2 * config.TIME_RESOLUTION
+    t_start, view, res = buf.get_view_at(
+        width=3 * config.TIME_RESOLUTION,
+        height=10,
+        pan_sec=pan_sec,
+        target_resolution=config.TIME_RESOLUTION,
+    )
 
     assert abs(t_start - pan_sec) < 1e-6
     assert not np.isnan(view[0]).all()
@@ -77,6 +82,26 @@ def test_append_nan_psd_does_not_populate_frame():
 
     assert t_start == 1000.0
     assert np.isnan(view).all()
+
+
+def test_buffer_t0_is_snapped_to_time_resolution():
+    buf = DSABuffer()
+    psd = np.ones(len(get_freq_bins()), dtype=np.float32)
+
+    buf.append(1000.17, psd)
+
+    assert buf.t0 == 1000.1
+
+
+def test_finest_resolution_overwrites_within_same_time_slot():
+    buf = DSABuffer()
+    psd_a = np.ones(len(get_freq_bins()), dtype=np.float32)
+    psd_b = np.full(len(get_freq_bins()), 3.0, dtype=np.float32)
+
+    buf.append(1000.01, psd_a)
+    buf.append(1000.04, psd_b)
+
+    np.testing.assert_array_equal(buf.buffers[config.TIME_RESOLUTION]["data"][0], psd_b)
 
 
 def test_coarse_resolution_averages_columns_within_same_slot():

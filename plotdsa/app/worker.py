@@ -1,4 +1,5 @@
 import time
+import math
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -20,7 +21,8 @@ class ProcessingWorker(QObject):
 
         self.stream = EEGStream()
         self._last_connection_state = self.stream.receiving
-        self._dsa_time_origin = None
+        self._next_dsa_slot = None
+        self._expected_dsa_ts = None
         self.eeg_buffer = EEGBuffer(
             self.user_config.window_sec,
             self.user_config.window_overlap
@@ -50,16 +52,20 @@ class ProcessingWorker(QObject):
                     continue
 
                 samples = self.stream.read_lsl_samples()
-                self.new_samples.emit([sample[1] for sample in samples])
 
                 method = 'multitaper' if self.user_config.use_multitaper else 'welch'
                 dsa_columns = self.eeg_buffer.get_dsa_columns(samples, method=method)
+
+                filtered_samples = self.eeg_buffer.consume_view_samples()
+                if not filtered_samples and dsa_columns and samples:
+                    filtered_samples = [sample[1] for sample in samples]
+                self.new_samples.emit(filtered_samples)
 
                 for ts, psd in dsa_columns:
                     if psd is None:
                         continue
 
-                    steps = self._get_dsa_steps(ts)
+                    ts, steps = self._discretize_dsa_column(ts)
 
                     duration = steps * config.TIME_RESOLUTION
 
@@ -74,18 +80,31 @@ class ProcessingWorker(QObject):
             self._io_executor.shutdown(wait=True)
 
 
-
     def stop(self):
         self.running = False
 
-    def _get_dsa_steps(self, ts):
-        current_slot = self._get_dsa_slot(ts)
+    def _discretize_dsa_column(self, ts):
         hop_sec = self.eeg_buffer.hop_len / config.SAMPLE_RATE_HZ
+        if self._next_dsa_slot is None:
+            current_slot = self._get_dsa_slot(ts)
+        elif self._is_continuous_dsa_ts(ts):
+            current_slot = self._next_dsa_slot
+        else:
+            current_slot = max(self._next_dsa_slot, self._get_dsa_slot(ts))
+
         next_slot = self._get_dsa_slot(ts + hop_sec)
-        return max(1, next_slot - current_slot)
+        next_slot = max(current_slot + 1, next_slot)
+
+        self._next_dsa_slot = next_slot
+        self._expected_dsa_ts = ts + hop_sec
+        snapped_ts = current_slot * config.TIME_RESOLUTION
+        return snapped_ts, next_slot - current_slot
+
+    def _is_continuous_dsa_ts(self, ts):
+        if self._expected_dsa_ts is None:
+            return False
+        return abs(ts - self._expected_dsa_ts) <= config.DSA_TIME_DIFF_TOLERANCE
 
     def _get_dsa_slot(self, ts):
-        if self._dsa_time_origin is None:
-            self._dsa_time_origin = ts
-        offset = (ts - self._dsa_time_origin) / config.TIME_RESOLUTION
-        return int(offset + 0.5)
+        offset = ts / config.TIME_RESOLUTION
+        return int(math.floor(offset + 0.5))

@@ -66,6 +66,27 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
     assert emitted_samples == [[1.0]]
     assert len(emitted_columns) == 1
     assert emitted_columns[0][0] == 123.0
-    assert emitted_columns[0][2] == 1
+    assert emitted_columns[0][2] == 10
     assert saved_calls[0][1][0] == 123.0
-    assert saved_calls[0][1][1] == 1 * config.TIME_RESOLUTION
+    assert saved_calls[0][1][1] == 10 * config.TIME_RESOLUTION
+
+
+def test_discretize_dsa_column_keeps_continuous_half_second_hops_contiguous(monkeypatch):
+    monkeypatch.setattr("worker.EEGStream", DummyStream)
+
+    worker = ProcessingWorker(UserConfig(window_sec=1, window_overlap=0.5))
+
+    emitted = [
+        worker._discretize_dsa_column(1000.9 + i * 0.5)
+        for i in range(4)
+    ]
+
+    expected = [
+        (1000.9, 5),
+        (1001.4, 5),
+        (1001.9, 5),
+        (1002.4, 5),
+    ]
+    for (actual_ts, actual_steps), (expected_ts, expected_steps) in zip(emitted, expected):
+        assert actual_ts == pytest.approx(expected_ts)
+        assert actual_steps == expected_steps

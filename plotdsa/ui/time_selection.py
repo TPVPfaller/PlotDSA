@@ -48,6 +48,7 @@ class TimeSelectionDialog(QDialog):
         self.setStyleSheet(f"""
             QDialog {{
                 font-size: {config.FONT_SIZE}px;
+                color: white;
             }}
             QFrame#pickerSection {{
                 border: 1px solid palette(mid);
@@ -60,12 +61,13 @@ class TimeSelectionDialog(QDialog):
                 background: palette(alternate-base);
                 font-size: {config.FONT_SIZE + 4}px;
                 font-weight: 600;
+                color: white;
             }}
             QPushButton#presetButton {{
-                min-height: 40px;
+                min-height: 48px;
                 padding: 8px 16px;
                 border-radius: 10px;
-                color: palette(button-text);
+                color: white;
                 font-size: {config.FONT_SIZE + 2}px;
             }}
             QPushButton#presetButton:hover {{
@@ -76,20 +78,20 @@ class TimeSelectionDialog(QDialog):
                 background: transparent;
             }}
             QSlider::groove:horizontal {{
-                height: 20px;
-                border-radius: 10px;
+                height: 24px;
+                border-radius: 12px;
                 background: palette(mid);
             }}
             QSlider::sub-page:horizontal {{
-                height: 20px;
-                border-radius: 10px;
+                height: 24px;
+                border-radius: 12px;
                 background: palette(highlight);
             }}
             QSlider::handle:horizontal {{
-                width: 44px;
-                height: 44px;
+                width: 48px;
+                height: 48px;
                 margin: -12px 0;
-                border-radius: 22px;
+                border-radius: 24px;
                 background: palette(window-text);
                 border: 2px solid palette(base);
             }}
@@ -97,6 +99,7 @@ class TimeSelectionDialog(QDialog):
                 padding: 10px;
                 font-size: {config.FONT_SIZE + 14}px;
                 font-weight: 700;
+                color: white;
             }}
         """)
 

@@ -19,6 +19,19 @@ def test_save_psd_to_csv_creates_file(tmp_path, monkeypatch):
     assert f"f_{config.FREQ_BINS[0]:.1f}_Hz" in content
 
 
+def test_save_psd_to_csv_preserves_fractional_duration(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "BASE_DIR", str(tmp_path))
+
+    psd = np.arange(len(config.FREQ_BINS), dtype=np.float32)
+
+    Output.save_psd_to_csv(1_700_000_000.0, config.TIME_RESOLUTION, psd)
+
+    [csv_file] = list(tmp_path.glob("*.csv"))
+    duration = csv_file.read_text().splitlines()[1].split(",")[1]
+
+    assert float(duration) == config.TIME_RESOLUTION
+
+
 def test_save_psd_to_csv_skips_duplicate_timestamp(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "BASE_DIR", str(tmp_path))
 
@@ -78,6 +91,23 @@ def test_load_psd_from_time_ignores_malformed_rows_and_sorts_results(tmp_path, m
     assert [item[0] for item in loaded] == [start_dt.timestamp(), next_dt.timestamp()]
     assert loaded[0][1] == 1.0
     assert loaded[0][2].shape == config.FREQ_BINS.shape
+
+
+def test_load_psd_from_time_reads_fractional_duration(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "BASE_DIR", str(tmp_path))
+    file_date = datetime(2023, 11, 14)
+    header = ["timestamp", "duration"] + [f"f_{freq:.1f}_Hz" for freq in config.FREQ_BINS]
+    row = ["22:13:20.000", f"{config.TIME_RESOLUTION:g}"] + ["2.0"] * len(config.FREQ_BINS)
+    csv_path = tmp_path / "dsa_2023-11-14.csv"
+
+    with csv_path.open("w", newline="") as handle:
+        handle.write(",".join(header) + "\n")
+        handle.write(",".join(row) + "\n")
+
+    loaded = Output.load_psd_from_time(file_date)
+
+    assert len(loaded) == 1
+    assert loaded[0][1] == config.TIME_RESOLUTION
 
 
 def test_load_psd_from_time_supports_legacy_header_without_duration(tmp_path, monkeypatch):

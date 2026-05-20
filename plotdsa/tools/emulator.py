@@ -95,7 +95,7 @@ def main():
 
                     # Push to LSL
                     if idx % SAMPLE_RATE_HZ == 0:
-                        time.sleep(0.99)
+                        time.sleep(0.999)
                         for s in samples:
                             outlet.push_sample([s])
                         samples = []

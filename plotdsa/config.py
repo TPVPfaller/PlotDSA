@@ -15,7 +15,7 @@ Immutable system constants.
 These should never change during runtime.
 """
 SAMPLE_RATE_HZ: int = 250
-TIME_RESOLUTION: float = 1.0
+TIME_RESOLUTION: float = 0.1
 DSA_FPS: float = 0.5
 INTERVAL: float = 1.1
 LOWEST_FREQ_HZ: float = 0.1
@@ -25,31 +25,32 @@ BASE_DIR: str = "C:\\temp\\VSCaptureWave"
 LSL_STREAM_NAME: str = "EEG_DATA"
 
 EEG_VIEW_WINDOW_SEC: float = 4.0
-EEG_MM_PER_SECOND: float = 30.0
+EEG_MM_PER_SECOND: float = 15.0
 EEG_MM_PER_SECOND_OPTIONS: Tuple[float, ...] = (7.5, 15.0, 30.0)
-EEG_UV_RANGE_MAX: int = 100
+EEG_UV_RANGE_MAX: int = 50
 MIN_DSA_HEIGHT: int = 210
 MIN_PSD_HEIGHT: int = 30
 MIN_EEG_HEIGHT: int = 145
 MIN_WINDOW_WIDTH: int = 800
 MIN_WINDOW_HEIGHT: int = 530
-N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for Welch's method
-FONT_SIZE = 15
-
+N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for PSD
+FONT_SIZE = 18
+TEXT_COLOR = (220, 220, 220)
+TEXT_COLOR_STR = "#D1D1D1"
 
 # Default values
 WINDOW_SEC: int = 2
-WINDOW_OVERLAP: float = 0.0
+WINDOW_OVERLAP: float = 0.25
 DISPLAY_MINUTES: float = 5.0
-MAX_FREQ_HZ: int = 30
-PSD_DB_MIN: int = -25
+MAX_FREQ_HZ: int = 47
+PSD_DB_MIN: int = -20
 PSD_DB_MAX: int = 20
 
 # Bounds (class-level, not instance attributes)
-WINDOW_SEC_BOUNDS: Tuple[int, int] = (max(1, math.ceil(TIME_RESOLUTION)), 30)
-WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.99)
+WINDOW_SEC_BOUNDS: Tuple[int, int] = (2, 30)
+WINDOW_OVERLAP_BOUNDS: Tuple[float, float] = (0.0, 0.5)
 DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*24.0*1) # 1 day limit to avoid 4GB allocation but still plenty
-MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 50)
+MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 47)
 PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
 PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
 EEG_BOUNDS: Tuple[int, int] = (-250, 250)

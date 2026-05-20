@@ -73,7 +73,7 @@ class DSAApplication(QMainWindow):
         self.layout = QVBoxLayout(container)
         self.layout.setSpacing(0)
 
-        self.disclaimer_label = QLabel("Nur zu Lehrzwecken!")
+        self.disclaimer_label = QLabel("Nur zu Lehrzwecken")
         self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 22px; margin-bottom: -5px; margin-top: -10px")
         self.disclaimer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -118,7 +118,7 @@ class DSAApplication(QMainWindow):
             return
 
         for ts, duration, psd in previous_data:
-            self._append_dsa_steps(ts, psd, int(duration / config.TIME_RESOLUTION))
+            self._append_dsa_steps(ts, psd, max(1, int(round(duration / config.TIME_RESOLUTION))))
 
         self.dsa_view.update()
         self.dsa_view.jump_to_live()
@@ -229,7 +229,7 @@ class DSAApplication(QMainWindow):
     def _confirm_clear_data(self):
         reply = self._show_message(
             "Confirm data deletion",
-            "Are you sure you want to delete all EEG/DSA data?\nThis cannot be undone.",
+            "Are you sure you want to delete all EEG/DSA data?\nThe data can be reloaded with the 'Load Data from Time' menu item.",
             buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             default_button=QMessageBox.StandardButton.No,
         )

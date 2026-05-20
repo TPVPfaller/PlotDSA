@@ -94,3 +94,18 @@ def test_psd_welch_mode_uses_same_frequency_bins():
 
     assert psd.shape == config.FREQ_BINS.shape
     assert np.isfinite(psd).all()
+
+
+def test_one_second_window_keeps_dsa_frequency_shape_for_both_psd_methods():
+    calc = DSACalculator(window_sec=1)
+    sr = config.SAMPLE_RATE_HZ
+    t = np.arange(0, 1, 1 / sr)
+    signal = np.sin(2 * np.pi * 10 * t)
+
+    for method in ("multitaper", "welch"):
+        psd = calc.compute_psd_column(signal, method=method)
+
+        assert psd.shape == config.FREQ_BINS.shape
+        assert np.isfinite(psd).all()
+        peak_freq = config.FREQ_BINS[np.argmax(psd)]
+        assert abs(peak_freq - 10.0) <= 1.0

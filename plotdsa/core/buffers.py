@@ -16,11 +16,12 @@ class DSABuffer:
     resolutions, then reconstructs NaN-padded views on demand.
     """
 
-    RESOLUTIONS = [1, 10, 40]  # seconds per frame
+    RESOLUTIONS = [config.TIME_RESOLUTION, 1, 10, 40]  # seconds per frame
 
     def __init__(self):
         self.max_minutes = config.DISPLAY_MINUTES_BOUNDS[1]
         self.n_freqs = len(config.FREQ_BINS)
+        self.t0 = None
         try:
             self._reset()
         except MemoryError:
@@ -29,7 +30,6 @@ class DSABuffer:
             self._reset()
 
     def _reset(self):
-        self.t0 = None
         self.latest_timestamp = None
         self.buffers = {
             res: {
@@ -50,7 +50,7 @@ class DSABuffer:
             psd = None
 
         if self.t0 is None:
-            self.t0 = ts
+            self.t0 = self._snap_to_resolution(ts, self.RESOLUTIONS[0])
         self.latest_timestamp = ts
 
         for res, buf in self.buffers.items():
@@ -58,7 +58,11 @@ class DSABuffer:
 
     def _get_slot(self, ts, res):
         offset = (ts - self.t0) / res
-        return int(offset + 0.5) if res == 1 else int(math.floor(offset))
+        return int(offset + 0.5) if res == self.RESOLUTIONS[0] else int(math.floor(offset))
+
+    @staticmethod
+    def _snap_to_resolution(ts, res):
+        return math.floor(ts / res) * res
 
     def _append_to_res(self, buf, slot, psd, res):
         last_slot = buf["last_slot"]
@@ -70,7 +74,7 @@ class DSABuffer:
             return
 
         existing = buf["data"].get(slot)
-        if existing is None or res == 1:
+        if existing is None or res == self.RESOLUTIONS[0]:
             buf["data"][slot] = psd
             if existing is None:
                 buf["counts"][slot] = 1
@@ -96,8 +100,9 @@ class DSABuffer:
         return max(0, buf["last_slot"] - buf["max_frames"] + 1)
 
     def get_oldest_timestamp(self):
-        oldest_slot = self._get_oldest_slot(1)
-        return time.time() if oldest_slot is None else self.t0 + oldest_slot
+        base_res = self.RESOLUTIONS[0]
+        oldest_slot = self._get_oldest_slot(base_res)
+        return time.time() if oldest_slot is None else self.t0 + oldest_slot * base_res
 
     def get_newest_timestamp(self):
         return time.time() if self.latest_timestamp is None else self.latest_timestamp
@@ -143,15 +148,41 @@ class EEGBuffer:
         self.processor = DSACalculator(window_sec)
         self.window_len = int(window_sec * config.SAMPLE_RATE_HZ)
         self.hop_len = max(1, int(self.window_len * (1.0 - overlap)))
+        self._pending_view_samples = []
+        self._view_window_started = False
 
     def _get_ts_diff(self, timestamp, value):
         if self.last_ts is not None:
-            expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
-            return abs((timestamp - expected).total_seconds())
+            if isinstance(self.last_ts, datetime.datetime):
+                expected = self.last_ts + datetime.timedelta(milliseconds=self.time_delta)
+                return abs((timestamp - expected).total_seconds())
+
+            expected = float(self.last_ts) + (1.0 / float(config.SAMPLE_RATE_HZ))
+            return abs(float(timestamp) - expected)
+
         if value is None or np.isnan(value):
             print(f"Invalid sample: {timestamp}, {value}")
             return config.DSA_TIME_DIFF_TOLERANCE + config.EEG_TIME_DIFF_TOLERANCE
         return 0.0
+
+    def _reset_state(self):
+        self.eeg_values.clear()
+        self.timestamps.clear()
+        self.last_ts = None
+        self._view_window_started = False
+
+    def _append_view_samples(self, filtered_window):
+        if not self._view_window_started:
+            self._pending_view_samples.extend(filtered_window.tolist())
+            self._view_window_started = True
+            return
+
+        self._pending_view_samples.extend(filtered_window[-self.hop_len:].tolist())
+
+    def consume_view_samples(self):
+        samples = self._pending_view_samples
+        self._pending_view_samples = []
+        return samples
 
     def get_dsa_columns(self, data, method="multitaper"):
         if data is None or len(data) == 0:
@@ -164,9 +195,7 @@ class EEGBuffer:
             if diff > config.EEG_TIME_DIFF_TOLERANCE:
                 if diff > config.DSA_TIME_DIFF_TOLERANCE:
                     print("Timestamp difference")
-                    self.eeg_values.clear()
-                    self.timestamps.clear()
-                    self.last_ts = None
+                    self._reset_state()
                     continue
 
             self.eeg_values.append(eeg)
@@ -175,9 +204,15 @@ class EEGBuffer:
 
             while len(self.eeg_values) >= self.window_len:
                 window = np.asarray(self.eeg_values[:self.window_len], dtype=np.float32)
-                window_ts = self.timestamps[self.window_len - 1]
-                psd = self.processor.compute_psd_column(window, method=method)
-                output_dsa.append((window_ts.timestamp() - self.window_sec, psd))
+                window_start_ts = self.timestamps[0]
+                filtered_window = self.processor.filter_window(window)
+                psd = self.processor.compute_psd_from_filtered(filtered_window, method=method)
+                self._append_view_samples(filtered_window)
+                if isinstance(window_start_ts, datetime.datetime):
+                    dsa_ts = window_start_ts.timestamp()
+                else:
+                    dsa_ts = float(window_start_ts)
+                output_dsa.append((dsa_ts, psd))
                 del self.eeg_values[:self.hop_len]
                 del self.timestamps[:self.hop_len]
 
@@ -190,3 +225,5 @@ class EEGBuffer:
         if self.hop_len < 1:
             self.hop_len = 1
         self.processor.update_config(window_sec)
+        self._pending_view_samples = []
+        self._view_window_started = False

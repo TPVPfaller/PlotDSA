@@ -147,6 +147,6 @@ class Output:
                                 [f"f_{f:.1f}_Hz" for f in config.FREQ_BINS])
 
             writer.writerow(
-                [ts_str, f"{int(duration)}"] +
+                [ts_str, f"{float(duration):g}"] +
                 [np.round(x, 4) if np.isfinite(x) else "nan" for x in psd]
             )

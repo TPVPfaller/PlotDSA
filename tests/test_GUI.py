@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QCloseEvent
 from main import DSAApplication, DSAView, PSDView, EEGView, SettingsDialog
@@ -130,6 +131,21 @@ def test_on_new_samples_is_ignored_when_eeg_view_is_hidden(dsa_app):
 
     assert len(dsa_app.eeg_view._pending) == 0
     assert dsa_app._last_data_receive_time == before
+
+
+def test_load_data_uses_fractional_duration_to_append_expected_dsa_steps(dsa_app, monkeypatch):
+    psd = np.ones(len(dsa_app.dsa_view.freq_bins), dtype=np.float32)
+    appended = []
+
+    monkeypatch.setattr(
+        "main.Output.load_psd_from_time",
+        lambda start_time_dt: [(1000.0, 3 * 0.1, psd)]
+    )
+    monkeypatch.setattr(dsa_app.dsa_view, "append", lambda ts, loaded_psd: appended.append((ts, loaded_psd)))
+
+    dsa_app._load_data_from_time(time.time())
+
+    assert [ts for ts, _ in appended] == pytest.approx([1000.0, 1000.1, 1000.2])
 
 
 def test_close_event_waits_asynchronously_for_running_worker(dsa_app):
