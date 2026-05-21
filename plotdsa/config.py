@@ -25,8 +25,9 @@ BASE_DIR: str = "C:\\temp\\VSCaptureWave"
 LSL_STREAM_NAME: str = "EEG_DATA"
 
 EEG_VIEW_WINDOW_SEC: float = 4.0
-EEG_MM_PER_SECOND: float = 15.0
-EEG_MM_PER_SECOND_OPTIONS: Tuple[float, ...] = (7.5, 15.0, 30.0)
+EEG_SWEEP_SPEED: float = 15.0
+EEG_SWEEP_SPEED_OPTIONS: Tuple[float, ...] = (7.5, 15.0, 30.0)
+EEG_Y_RANGE_OPTIONS: Tuple[int, ...] = (50, 100, 150)
 EEG_UV_RANGE_MAX: int = 50
 MIN_DSA_HEIGHT: int = 210
 MIN_PSD_HEIGHT: int = 30
@@ -75,7 +76,7 @@ class UserConfig:
     max_freq_hz: int = MAX_FREQ_HZ
     psd_db_min: int = PSD_DB_MIN
     psd_db_max: int = PSD_DB_MAX
-    eeg_mm_per_second: float = EEG_MM_PER_SECOND
+    eeg_sweep_speed: float = EEG_SWEEP_SPEED
     eeg_uv_range_max: int = EEG_UV_RANGE_MAX
     use_multitaper: bool = USE_MULTITAPER
 
@@ -101,9 +102,9 @@ class UserConfig:
                 f"psd_db_min ({self.psd_db_min}) must be less than psd_db_max ({self.psd_db_max})"
             )
 
-        if self.eeg_mm_per_second not in EEG_MM_PER_SECOND_OPTIONS:
+        if self.eeg_sweep_speed not in EEG_SWEEP_SPEED_OPTIONS:
             raise ValueError(
-                f"eeg_mm_per_second must be one of {EEG_MM_PER_SECOND_OPTIONS}, got {self.eeg_mm_per_second}"
+                f"eeg_mm_per_second must be one of {EEG_SWEEP_SPEED_OPTIONS}, got {self.eeg_sweep_speed}"
             )
 
     def update(self, **kwargs) -> 'UserConfig':

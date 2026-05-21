@@ -31,6 +31,8 @@ SOURCE_ID = "EEG_DSA_ENTROPY_EMULATOR"
 
 # Set your sample rate here
 SAMPLE_RATE_HZ = config.SAMPLE_RATE_HZ
+MISSING_BURST_EVERY_SAMPLES = SAMPLE_RATE_HZ * 4
+MISSING_BURST_LENGTH = 1
 
 
 def load_csv_column(filepath, i):
@@ -52,6 +54,13 @@ def load_csv_column(filepath, i):
             except Exception:
                 continue
     return values
+
+
+def inject_missing_value(idx, value):
+    """Replace short deterministic bursts with NaN to exercise EEG gap handling."""
+    if idx % MISSING_BURST_EVERY_SAMPLES < MISSING_BURST_LENGTH:
+        return math.nan
+    return value
 
 
 def main():
@@ -82,13 +91,17 @@ def main():
                 values = load_csv_column(filepath, j)
                 if not values:
                     raise RuntimeError("No valid samples loaded")
-                print(f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv column {j}...")
+                print(
+                    f"Streaming {len(values)} samples from JSMF_00{i}_filtered_emergence.csv column {j} "
+                    f"with {MISSING_BURST_LENGTH} missing samples every {MISSING_BURST_EVERY_SAMPLES} samples..."
+                )
 
                 interval = 1.0 / SAMPLE_RATE_HZ
                 samples = []
 
                 for idx, value in enumerate(values):
                     ts += timedelta(seconds=interval)
+                    emitted_value = inject_missing_value(idx, value)
 
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
                     samples.append(f"{ts_str},{value}")

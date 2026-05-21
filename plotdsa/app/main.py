@@ -105,7 +105,6 @@ class DSAApplication(QMainWindow):
 
     def _load_data_from_time(self, start_time_dt):
         self.dsa_view.clear_data()
-        self.eeg_view.clear_data()
 
         try:
             previous_data = Output.load_psd_from_time(start_time_dt)

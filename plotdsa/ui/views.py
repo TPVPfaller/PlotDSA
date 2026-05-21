@@ -7,10 +7,12 @@ from pyqtgraph import ColorBarItem, GridItem
 from PySide6.QtCore import QByteArray, QSize, Qt, QEvent, QTimer
 from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+from scipy.signal import lfilter
 import time
 
 import math
 from ..core.buffers import DSABuffer
+from ..core.calculations import DSACalculator
 from .. import config
 
 SETTINGS_GEAR_SVG = """
@@ -229,7 +231,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             interactive=False,
         )
         self.colorbar.setImageItem(self.image)
-        self.colorbar.setContentsMargins(0,24,15,24)
+        self.colorbar.setContentsMargins(0,24,20,24)
         self.addItem(self.colorbar, row=0, col=1)
 
         cb_axis = self.colorbar.getAxis("left")
@@ -246,14 +248,14 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self.settings_button = QToolButton(self.viewport())
         self.settings_button.setCursor(Qt.PointingHandCursor)
-        self.settings_button.setFixedSize(28, 28)
+        self.settings_button.setFixedSize(32, 32)
         self.settings_button.setIcon(create_settings_gear_icon())
         self.settings_button.setIconSize(QSize(18, 18))
         self.settings_button.setStyleSheet("""
             QToolButton {
                 background-color: rgba(60, 60, 60, 170);
                 border: 1px solid rgba(255, 255, 255, 45);
-                border-radius: 14px;
+                border-radius: 16px;
             }
             QToolButton:hover {
                 background-color: rgba(80, 80, 80, 220);
@@ -685,8 +687,6 @@ class EEGView(pg.PlotWidget):
     """Real-time circular EEG display with smooth sweep line + gap (optimized)."""
 
     RENDER_HZ = 20
-    EEG_SWEEP_SPEED_OPTIONS = config.EEG_MM_PER_SECOND_OPTIONS
-    EEG_Y_RANGE_OPTIONS = (50, 100, 150)
 
     def __init__(self, user_config, on_config_change=None):
         super().__init__()
@@ -719,12 +719,18 @@ class EEGView(pg.PlotWidget):
 
         self.setMenuEnabled(False)
         self.setClipToView(True)
-        self.setDownsampling(mode="peak")
+        self.setDownsampling(auto=False, ds=1, mode="subsample")
         self.setMouseEnabled(False, False)
         self.setInteractive(False)
 
         self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
         self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
+        self.missing_curve_a = self.plot(pen=pg.mkPen((255, 80, 80), width=2))
+        self.missing_curve_b = self.plot(pen=pg.mkPen((255, 80, 80), width=2))
+        self.missing_curve_a.setDownsampling(auto=False, ds=1, method="subsample")
+        self.missing_curve_b.setDownsampling(auto=False, ds=1, method="subsample")
+        self.curve_b.hide()
+        self.missing_curve_b.hide()
 
         # Sweep line
         self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
@@ -754,7 +760,7 @@ class EEGView(pg.PlotWidget):
         self._sample_period = 1.0 / config.SAMPLE_RATE_HZ
         self._last_rendered_head = -1
         self.seconds_visible = config.EEG_VIEW_WINDOW_SEC
-        self._paused_sample_count = 0
+        self._init_view_filter()
 
         # --- View limits ---
         self.setXRange(0, config.EEG_VIEW_WINDOW_SEC, padding=0)
@@ -763,7 +769,7 @@ class EEGView(pg.PlotWidget):
         # --- Timer ---
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.PreciseTimer)
-        self._timer.timeout.connect(self._render_frame)
+        self._timer.timeout.connect(self._render_frame_stable)
         self._timer.start(int(1000 / self.RENDER_HZ))
 
     def _init_settings_controls(self):
@@ -775,14 +781,14 @@ class EEGView(pg.PlotWidget):
 
         self.settings_button = QToolButton(self.viewport())
         self.settings_button.setCursor(Qt.PointingHandCursor)
-        self.settings_button.setFixedSize(28, 28)
+        self.settings_button.setFixedSize(32, 32)
         self.settings_button.setIcon(create_settings_gear_icon())
         self.settings_button.setIconSize(QSize(18, 18))
         self.settings_button.setStyleSheet("""
             QToolButton {
                 background-color: rgba(60, 60, 60, 170);
                 border: 1px solid rgba(255, 255, 255, 45);
-                border-radius: 14px;
+                border-radius: 16px;
             }
             QToolButton:hover {
                 background-color: rgba(80, 80, 80, 220);
@@ -796,12 +802,12 @@ class EEGView(pg.PlotWidget):
         self.pause_button = QToolButton(self.viewport())
         self.pause_button.setCursor(Qt.PointingHandCursor)
         self.pause_button.setCheckable(True)
-        self.pause_button.setFixedSize(28, 28)
+        self.pause_button.setFixedSize(32, 32)
         self.pause_button.setStyleSheet("""
             QToolButton {
                 background-color: rgba(60, 60, 60, 170);
                 border: 1px solid rgba(255, 255, 255, 45);
-                border-radius: 14px;
+                border-radius: 16px;
             }
             QToolButton:hover {
                 background-color: rgba(80, 80, 80, 220);
@@ -841,7 +847,7 @@ class EEGView(pg.PlotWidget):
         popup_layout.addWidget(QLabel("Sweep Speed"))
         popup_layout.addLayout(
             self._create_settings_button_row(
-                self.EEG_SWEEP_SPEED_OPTIONS,
+                config.EEG_SWEEP_SPEED_OPTIONS,
                 self.sweep_buttons,
                 self._set_eeg_sweep_speed,
             )
@@ -850,7 +856,7 @@ class EEGView(pg.PlotWidget):
         popup_layout.addWidget(QLabel("Y Range"))
         popup_layout.addLayout(
             self._create_settings_button_row(
-                self.EEG_Y_RANGE_OPTIONS,
+                config.EEG_Y_RANGE_OPTIONS,
                 self.amplitude_buttons,
                 self._set_eeg_y_max,
             )
@@ -916,37 +922,17 @@ class EEGView(pg.PlotWidget):
         self.is_paused = not self.is_paused
         if self.is_paused:
             self._pending.clear()
-            self._paused_sample_count = 0
-        elif self._paused_sample_count:
-            self._refresh_display_from_latest_history()
         self._sync_pause_button()
 
-    def _refresh_display_from_latest_history(self):
-        if not self.history:
-            self._paused_sample_count = 0
-            return
+    def _init_view_filter(self):
+        self._view_filter = DSACalculator(self.user_config.window_sec)
+        self._view_filter_b = np.asarray(self._view_filter.bp_b, dtype=np.float32)
+        self._view_filter_settle_samples = max(0, (len(self._view_filter_b) - 1) // 2)
+        self._reset_view_filter_state()
 
-        count = min(len(self.history), self.N)
-        latest = np.asarray(list(self.history)[-count:], dtype=np.float32)
-        display = np.full(self.N, np.nan, dtype=np.float32)
-        if self.display_head >= 0:
-            head = self.display_head
-        else:
-            head = count - 1
-        start_idx = (head - count + 1) % self.N
-
-        if start_idx + count <= self.N:
-            display[start_idx:start_idx + count] = latest
-        else:
-            first_part = self.N - start_idx
-            display[start_idx:] = latest[:first_part]
-            display[:count - first_part] = latest[first_part:]
-
-        self.display = display
-        self.display_head = head
-        self._paused_sample_count = 0
-        self._last_rendered_head = -1
-        self._render_frame()
+    def _reset_view_filter_state(self):
+        self._view_filter_zi = np.zeros(len(self._view_filter_b) - 1, dtype=np.float32)
+        self._view_filter_settle_remaining = self._view_filter_settle_samples
 
     def _sync_pause_button(self):
         self.pause_button.blockSignals(True)
@@ -1002,7 +988,7 @@ class EEGView(pg.PlotWidget):
             button.blockSignals(False)
 
     def _sync_sweep_buttons(self):
-        selected = self.user_config.eeg_mm_per_second
+        selected = self.user_config.eeg_sweep_speed
         for speed, button in self.sweep_buttons.items():
             button.blockSignals(True)
             button.setChecked(speed == selected)
@@ -1021,18 +1007,18 @@ class EEGView(pg.PlotWidget):
 
         self.on_config_change(self.user_config.update(eeg_uv_range_max=max_uv))
 
-    def _set_eeg_sweep_speed(self, mm_per_second):
-        if mm_per_second == self.user_config.eeg_mm_per_second:
+    def _set_eeg_sweep_speed(self, sweep_speed):
+        if sweep_speed == self.user_config.eeg_sweep_speed:
             self._sync_sweep_buttons()
             return
 
         if self.on_config_change is None:
-            self.user_config = self.user_config.update(eeg_mm_per_second=mm_per_second)
+            self.user_config = self.user_config.update(eeg_sweep_speed=sweep_speed)
             self._sync_sweep_buttons()
             self._update_time_scale()
             return
 
-        self.on_config_change(self.user_config.update(eeg_mm_per_second=mm_per_second))
+        self.on_config_change(self.user_config.update(eeg_sweep_speed=sweep_speed))
 
 
     def showEvent(self, event):
@@ -1054,7 +1040,7 @@ class EEGView(pg.PlotWidget):
         screen = handle.screen()
         dpi = screen.logicalDotsPerInch() if screen else 96
 
-        px_per_sec = self.user_config.eeg_mm_per_second * dpi / 25.4
+        px_per_sec = self.user_config.eeg_sweep_speed * dpi / 25.4
 
         try:
             view_box = self.getViewBox()
@@ -1138,9 +1124,12 @@ class EEGView(pg.PlotWidget):
         self.display_head = -1
         self._pending.clear()
         self._last_rendered_head = -1
+        self._reset_view_filter_state()
         self.update_line.setPos(0)
         self.curve_a.clear()
         self.curve_b.clear()
+        self.missing_curve_a.clear()
+        self.missing_curve_b.clear()
 
     def apply_config(self, user_config):
         self.user_config = user_config
@@ -1157,26 +1146,90 @@ class EEGView(pg.PlotWidget):
             return
 
         if self.is_paused:
-            self.history.append(float(val))
-            self._paused_sample_count += 1
             return
+
+        sample = float(val)
+        if not np.isfinite(sample):
+            sample = np.nan
+            self._reset_view_filter_state()
+        else:
+            filtered_sample, self._view_filter_zi = lfilter(
+                self._view_filter_b,
+                [1.0],
+                np.asarray([sample], dtype=np.float32),
+                zi=self._view_filter_zi,
+            )
+            if self._view_filter_settle_remaining > 0:
+                self._view_filter_settle_remaining -= 1
+                sample = np.nan
+            else:
+                sample = float(filtered_sample[0])
 
         now = time.perf_counter()
         last = self._pending[-1][0] if self._pending else now
         scheduled = max(last + self._sample_period, now)
-        self._pending.append((scheduled, float(val)))
+        self._pending.append((scheduled, sample))
+
+    def _build_visible_curve_data(self, head):
+        visible_mask = np.zeros(self.N, dtype=bool)
+        gap_end = (head + self.gap_samples) % self.N
+        if head < gap_end:
+            visible_mask[gap_end:] = True
+            visible_mask[: head + 1] = True
+        else:
+            visible_mask[gap_end: head + 1] = True
+
+        visible_values = np.full(self.N, np.nan, dtype=np.float32)
+        visible_values[visible_mask] = self.display[visible_mask]
+
+        missing_mask = visible_mask & np.isnan(self.display)
+
+        valid_values = np.array(visible_values, copy=True)
+        valid_values[missing_mask] = np.nan
+        return valid_values, missing_mask
+
+    def _build_missing_curve_segments(self, missing_mask):
+        sample_width = np.float32(self.seconds_visible / self.N)
+        half_sample_width = np.float32(sample_width / 2.0)
+        missing_x = []
+        missing_y = []
+        idx = 0
+
+        while idx < self.N:
+            if not missing_mask[idx]:
+                idx += 1
+                continue
+
+            run_start = idx
+            while idx < self.N and missing_mask[idx]:
+                idx += 1
+            run_end = idx - 1
+
+            missing_x.append(max(0.0, self.x[run_start] - half_sample_width))
+            missing_y.append(0.0)
+            missing_x.append(min(self.seconds_visible, self.x[run_end] + half_sample_width))
+            missing_y.append(0.0)
+            missing_x.append(np.nan)
+            missing_y.append(np.nan)
+
+        if not missing_x:
+            return np.array([], dtype=np.float32), np.array([], dtype=np.float32)
+
+        return (
+            np.asarray(missing_x, dtype=np.float32),
+            np.asarray(missing_y, dtype=np.float32),
+        )
 
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
-    def _render_frame(self):
+    def _render_frame_stable(self):
         if not self._pending and self.display_head < 0:
             return
 
         now = time.perf_counter()
         changed = False
 
-        # --- Consume pending samples ---
         while self._pending and self._pending[0][0] <= now:
             _, v = self._pending.popleft()
             self.display_head = (self.display_head + 1) % self.N
@@ -1184,63 +1237,31 @@ class EEGView(pg.PlotWidget):
             self.history.append(v)
             changed = True
 
-        # --- Interpolated head ---
         if self._pending:
             next_wall = self._pending[0][0]
             prev_wall = next_wall - self._sample_period
-
             frac = (now - prev_wall) / self._sample_period
             if frac < 0.0:
                 frac = 0.0
             elif frac > 1.0:
                 frac = 1.0
-
             interp_head = (self.display_head + frac) % self.N
         else:
             if self.display_head < 0:
                 return
             interp_head = float(self.display_head)
 
-        # --- Update sweep line ---
         self.update_line.setPos((interp_head / self.N) * self.seconds_visible)
 
         head = int(interp_head) % self.N
-
         if not changed and head == self._last_rendered_head:
             return
 
         self._last_rendered_head = head
-
-        gap_end = (head + self.gap_samples) % self.N
-
-        if head < gap_end:
-            # Case 1: no wrap in gap
-            # Draw: gap_end → end  AND  0 → head
-
-            # Segment A: gap_end → end
-            if gap_end < self.N:
-                self.curve_a.setData(
-                    self.x[gap_end:],
-                    self.display[gap_end:],
-                )
-            else:
-                self.curve_a.clear()
-
-            # Segment B: 0 → head
-            if head >= 0:
-                self.curve_b.setData(
-                    self.x[: head + 1],
-                    self.display[: head + 1],
-                )
-            else:
-                self.curve_b.clear()
-
+        valid_values, missing_mask = self._build_visible_curve_data(head)
+        missing_x, missing_y = self._build_missing_curve_segments(missing_mask)
+        self.curve_a.setData(self.x, valid_values, connect="finite")
+        if len(missing_x) == 0:
+            self.missing_curve_a.clear()
         else:
-            # Case 2: gap wraps around buffer
-            # Draw: gap_end → head (single segment)
-
-            self.curve_a.setData(
-                self.x[gap_end: head + 1],
-                self.display[gap_end: head + 1],
-            )
-            self.curve_b.clear()
+            self.missing_curve_a.setData(missing_x, missing_y, connect="finite")

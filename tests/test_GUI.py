@@ -112,7 +112,7 @@ def test_eeg_view_append_sample(qtbot):
     view.append_sample(val)
     assert len(view._pending) > 0
     view._pending[0] = (time.perf_counter() - 1.0, val)
-    view._render_frame()
+    view._render_frame_stable()
     assert view.history[-1] == val
 
 
@@ -146,6 +146,23 @@ def test_load_data_uses_fractional_duration_to_append_expected_dsa_steps(dsa_app
     dsa_app._load_data_from_time(time.time())
 
     assert [ts for ts, _ in appended] == pytest.approx([1000.0, 1000.1, 1000.2])
+
+
+def test_load_data_from_time_does_not_clear_eeg_view(dsa_app, monkeypatch):
+    psd = np.ones(len(dsa_app.dsa_view.freq_bins), dtype=np.float32)
+
+    monkeypatch.setattr(
+        "main.Output.load_psd_from_time",
+        lambda start_time_dt: [(1000.0, 0.1, psd)]
+    )
+
+    clear_calls = []
+    monkeypatch.setattr(dsa_app.eeg_view, "clear_data", lambda: clear_calls.append("cleared"))
+    monkeypatch.setattr(dsa_app.dsa_view, "append", lambda ts, loaded_psd: None)
+
+    dsa_app._load_data_from_time(time.time())
+
+    assert clear_calls == []
 
 
 def test_close_event_waits_asynchronously_for_running_worker(dsa_app):

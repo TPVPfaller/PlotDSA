@@ -56,10 +56,8 @@ class ProcessingWorker(QObject):
                 method = 'multitaper' if self.user_config.use_multitaper else 'welch'
                 dsa_columns = self.eeg_buffer.get_dsa_columns(samples, method=method)
 
-                filtered_samples = self.eeg_buffer.consume_view_samples()
-                if not filtered_samples and dsa_columns and samples:
-                    filtered_samples = [sample[1] for sample in samples]
-                self.new_samples.emit(filtered_samples)
+                raw_samples = [sample[1] for sample in samples]
+                self.new_samples.emit(raw_samples)
 
                 for ts, psd in dsa_columns:
                     if psd is None:
