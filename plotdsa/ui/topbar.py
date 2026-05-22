@@ -67,26 +67,39 @@ class TopBar(QWidget):
         self.zoom_slider.setMinimum(1)
         self.zoom_slider.setMaximum(100)
         self.zoom_slider.setStyleSheet(f"""
+            QSlider {{
+                background: transparent;
+                min-height: 28px;
+            }}
             QSlider::groove:horizontal {{
                 height: 8px;
-                background: palette(mid);
+                background: rgb(110, 116, 124);
+                border: 1px solid rgb(64, 69, 75);
                 border-radius: 4px;
             }}
             QSlider::sub-page:horizontal {{
-                background: palette(highlight);
+                background: rgb(92, 98, 106);
+                border: 1px solid rgb(74, 79, 86);
                 border-radius: 4px;
             }}
             QSlider::add-page:horizontal {{
-                background: palette(mid);
+                background: rgb(110, 116, 124);
+                border: 1px solid rgb(64, 69, 75);
                 border-radius: 4px;
             }}
             QSlider::handle:horizontal {{
-                width: 24px;
-                height: 24px;
-                margin: -8px 0;
-                border-radius: 12px;
-                background: palette(window-text);
-                border: 1px solid palette(base);
+                width: 20px;
+                height: 20px;
+                margin: -7px 0;
+                border-radius: 10px;
+                background: rgb(250, 252, 255);
+                border: 2px solid rgb(92, 98, 106);
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: rgb(255, 255, 255);
+            }}
+            QSlider::handle:horizontal:pressed {{
+                background: rgb(228, 231, 236);
             }}
         """)
         self.zoom_slider.valueChanged.connect(self._zoom_changed)

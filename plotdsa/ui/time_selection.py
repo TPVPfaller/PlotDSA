@@ -76,24 +76,39 @@ class TimeSelectionDialog(QDialog):
             }}
             QSlider {{
                 background: transparent;
+                min-height: 36px;
             }}
             QSlider::groove:horizontal {{
-                height: 24px;
-                border-radius: 12px;
-                background: palette(mid);
+                height: 10px;
+                border: 1px solid rgb(64, 69, 75);
+                border-radius: 5px;
+                background: rgb(110, 116, 124);
             }}
             QSlider::sub-page:horizontal {{
-                height: 24px;
-                border-radius: 12px;
-                background: palette(highlight);
+                height: 10px;
+                border: 1px solid rgb(74, 79, 86);
+                border-radius: 5px;
+                background: rgb(92, 98, 106);
+            }}
+            QSlider::add-page:horizontal {{
+                height: 10px;
+                border: 1px solid rgb(64, 69, 75);
+                border-radius: 5px;
+                background: rgb(110, 116, 124);
             }}
             QSlider::handle:horizontal {{
-                width: 48px;
-                height: 48px;
-                margin: -12px 0;
-                border-radius: 24px;
-                background: palette(window-text);
-                border: 2px solid palette(base);
+                width: 26px;
+                height: 26px;
+                margin: -9px 0;
+                border-radius: 13px;
+                background: rgb(250, 252, 255);
+                border: 2px solid rgb(92, 98, 106);
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: rgb(255, 255, 255);
+            }}
+            QSlider::handle:horizontal:pressed {{
+                background: rgb(228, 231, 236);
             }}
             QLabel#timeDisplay {{
                 padding: 10px;
