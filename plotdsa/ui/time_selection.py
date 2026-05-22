@@ -2,7 +2,6 @@ from datetime import datetime as dt
 import datetime
 import sys
 
-sys.argv += ['-platform', 'windows:darkmode=2']
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QLabel,
@@ -36,6 +35,7 @@ class TimeSelectionDialog(QDialog):
         self.setWindowTitle("Select Start Time")
         self.setMinimumSize(400, 350)
 
+        self._reference_now = self._normalize_datetime(dt.now())
         self._selected_dt = self._default_datetime()
         self._building_ui = False
 
@@ -168,13 +168,13 @@ class TimeSelectionDialog(QDialog):
         self._building_ui = False
 
     def _default_datetime(self):
-        return self._normalize_datetime(dt.now() - datetime.timedelta(hours=1))
+        return self._reference_now - datetime.timedelta(hours=1)
 
     def _apply_preset(self, offset):
-        self._apply_datetime(dt.now() - offset)
+        self._apply_datetime(self._reference_now - offset)
 
     def _normalize_datetime(self, value):
-        return value.replace(minute=0, second=0, microsecond=0)
+        return value.replace(second=0, microsecond=0)
 
     def _hours_ago(self, selected_dt, now):
         return round((now - selected_dt).total_seconds() / 3600)
@@ -185,14 +185,13 @@ class TimeSelectionDialog(QDialog):
         self.ago_slider.blockSignals(False)
 
     def _apply_datetime(self, selected_dt):
-        now = dt.now()
-        limit = now - datetime.timedelta(hours=24)
+        limit = self._reference_now - datetime.timedelta(hours=24)
         if selected_dt < limit:
             selected_dt = limit
 
-        normalized = self._normalize_datetime(min(selected_dt, now))
+        normalized = self._normalize_datetime(min(selected_dt, self._reference_now))
         self._selected_dt = normalized
-        hours_ago = self._hours_ago(normalized, now)
+        hours_ago = self._hours_ago(normalized, self._reference_now)
         self._set_hours_ago(hours_ago)
 
         self._update_time_display(hours_ago)
@@ -202,13 +201,13 @@ class TimeSelectionDialog(QDialog):
         if self._building_ui:
             return
 
-        selected_dt = self._normalize_datetime(dt.now() - datetime.timedelta(hours=hours_ago))
+        selected_dt = self._reference_now - datetime.timedelta(hours=hours_ago)
         self._selected_dt = selected_dt
         self._update_time_display(hours_ago)
         self._refresh_preview(selected_dt)
 
     def _refresh_preview(self, selected_dt):
-        delta = max(datetime.timedelta(), dt.now() - selected_dt)
+        delta = max(datetime.timedelta(), self._reference_now - selected_dt)
         total_minutes = int(delta.total_seconds() // 60)
         hours, minutes = divmod(total_minutes, 60)
 
