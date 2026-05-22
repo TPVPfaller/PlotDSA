@@ -37,11 +37,14 @@ class ProcessingWorker(QObject):
         if self._new_config is None:
             return False
 
+        processing_config_changed = self._processing_config_changed(self.user_config, self._new_config)
         self.user_config = self._new_config
         self._new_config = None
-        self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
-        self._next_dsa_slot = None
-        self._expected_dsa_ts = None
+
+        if processing_config_changed:
+            self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
+            self._next_dsa_slot = None
+            self._expected_dsa_ts = None
         return True
 
     @Slot()
@@ -69,6 +72,7 @@ class ProcessingWorker(QObject):
 
                 for ts, psd in dsa_columns:
                     if psd is None:
+                        print(f"DSA gap cause: worker skipped None PSD column at {ts}")
                         continue
 
                     ts, steps = self._discretize_dsa_column(ts)
@@ -96,7 +100,16 @@ class ProcessingWorker(QObject):
         elif self._is_continuous_dsa_ts(ts):
             current_slot = self._next_dsa_slot
         else:
+            expected_ts = self._expected_dsa_ts
+            expected_slot = self._next_dsa_slot
             current_slot = max(self._next_dsa_slot, self._get_dsa_slot(ts))
+            skipped_slots = current_slot - expected_slot
+            print(
+                "DSA gap cause: DSA column timestamp discontinuity "
+                f"(timestamp={ts:.6f}, expected={expected_ts:.6f}, "
+                f"current_slot={current_slot}, expected_slot={expected_slot}, "
+                f"skipped_slots={skipped_slots})"
+            )
 
         next_slot = self._get_dsa_slot(ts + hop_sec)
         next_slot = max(current_slot + 1, next_slot)
@@ -114,3 +127,10 @@ class ProcessingWorker(QObject):
     def _get_dsa_slot(self, ts):
         offset = ts / config.TIME_RESOLUTION
         return int(math.floor(offset + 0.5))
+
+    @staticmethod
+    def _processing_config_changed(old_config, new_config):
+        return (
+            old_config.window_sec != new_config.window_sec
+            or old_config.window_overlap != new_config.window_overlap
+        )

@@ -45,6 +45,10 @@ class DSABuffer:
         if has_data:
             psd = np.array(psd, dtype=np.float32, copy=True)
         else:
+            if psd is None:
+                print(f"DSA gap cause: empty PSD column appended at {ts}")
+            else:
+                print(f"DSA gap cause: all-NaN PSD column appended at {ts}")
             psd = None
 
         if self.t0 is None:
@@ -64,6 +68,12 @@ class DSABuffer:
     def _append_to_res(self, buf, slot, psd, res):
         last_slot = buf["last_slot"]
         if last_slot is None or slot > last_slot:
+            if last_slot is not None and slot > last_slot + 1:
+                print(
+                    "DSA gap cause: buffer slot jump "
+                    f"(resolution={res}, previous_slot={last_slot}, new_slot={slot}, "
+                    f"missing_slots={slot - last_slot - 1})"
+                )
             self._trim_expired_slots(buf, slot)
             buf["last_slot"] = slot
 
@@ -122,11 +132,14 @@ class DSABuffer:
         actual_width = slot_end - slot_start + 1
         t_start = self.t0 + slot_start * res
         frame = np.full((actual_width, height), np.nan, dtype=np.float32)
+        missing_slots = []
 
         for frame_idx, slot in enumerate(range(slot_start, slot_end + 1)):
             column = data.get(slot)
             if column is not None:
                 frame[frame_idx] = column[:height]
+            else:
+                missing_slots.append(slot)
         return float(t_start), frame, res
 
 
@@ -172,7 +185,12 @@ class EEGBuffer:
             diff = self._get_ts_diff(ts, eeg)
             if diff > config.EEG_TIME_DIFF_TOLERANCE:
                 if diff > config.DSA_TIME_DIFF_TOLERANCE:
-                    print("Timestamp difference")
+                    print(
+                        "DSA gap cause: timestamp difference "
+                        f"(timestamp={ts}, diff={diff:.6f}s, "
+                        f"eeg_tol={config.EEG_TIME_DIFF_TOLERANCE:.6f}s, "
+                        f"dsa_tol={config.DSA_TIME_DIFF_TOLERANCE:.6f}s)"
+                    )
                     self._reset_state()
                     continue
 
@@ -185,6 +203,11 @@ class EEGBuffer:
                 window_start_ts = self.timestamps[0]
                 filtered_window = self.processor.filter_window(window)
                 psd = self.processor.compute_psd_from_filtered(filtered_window, method=method)
+                if np.isnan(psd).all():
+                    print(
+                        "DSA gap cause: PSD calculator returned all-NaN column "
+                        f"(window_start={window_start_ts}, method={method})"
+                    )
                 if isinstance(window_start_ts, datetime.datetime):
                     dsa_ts = window_start_ts.timestamp()
                 else:
@@ -202,4 +225,3 @@ class EEGBuffer:
         if self.hop_len < 1:
             self.hop_len = 1
         self.processor.update_config(window_sec)
-        self._reset_state()

@@ -51,7 +51,6 @@ MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 47)
 PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
 PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
 EEG_BOUNDS: Tuple[int, int] = (-250, 250)
-EEG_UV_RANGE_MAX_BOUNDS: Tuple[int, int] = (50, 150)
 USE_MULTITAPER: bool = True
 
 _all_freq_bins = np.fft.rfftfreq(N_PER_SEGMENT, d=1 / SAMPLE_RATE_HZ)
@@ -91,7 +90,7 @@ class UserConfig:
         self._check_bounds("max_freq_hz", self.max_freq_hz, MAX_FREQ_HZ_BOUNDS)
         self._check_bounds("psd_db_min", self.psd_db_min, PSD_DB_MIN_BOUNDS)
         self._check_bounds("psd_db_max", self.psd_db_max, PSD_DB_MAX_BOUNDS)
-        self._check_bounds("eeg_uv_range_max", self.eeg_uv_range_max, EEG_UV_RANGE_MAX_BOUNDS)
+        self._check_bounds("eeg_uv_range_max", self.eeg_uv_range_max, (EEG_Y_RANGE_OPTIONS[0], EEG_Y_RANGE_OPTIONS[-1]))
 
         if self.psd_db_min >= self.psd_db_max:
             raise ValueError(

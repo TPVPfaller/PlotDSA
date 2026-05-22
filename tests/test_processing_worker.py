@@ -112,3 +112,25 @@ def test_apply_pending_config_resets_worker_and_eeg_buffer_state(monkeypatch):
     assert worker.eeg_buffer.eeg_values == []
     assert worker.eeg_buffer.timestamps == []
     assert worker.eeg_buffer.last_ts is None
+
+
+def test_apply_pending_display_only_config_keeps_worker_and_eeg_buffer_state(monkeypatch):
+    monkeypatch.setattr("worker.EEGStream", DummyStream)
+
+    worker = ProcessingWorker(UserConfig(window_sec=2, window_overlap=0.5))
+    worker._next_dsa_slot = 123
+    worker._expected_dsa_ts = 456.0
+    worker.eeg_buffer.eeg_values = [1.0, 2.0]
+    worker.eeg_buffer.timestamps = [1.0, 2.0]
+    worker.eeg_buffer.last_ts = 2.0
+
+    worker.apply_config(worker.user_config.update(psd_db_min=-10, psd_db_max=15))
+
+    assert worker._apply_pending_config() is True
+    assert worker._next_dsa_slot == 123
+    assert worker._expected_dsa_ts == 456.0
+    assert worker.eeg_buffer.window_len == 2 * config.SAMPLE_RATE_HZ
+    assert worker.eeg_buffer.hop_len == int(worker.eeg_buffer.window_len * 0.5)
+    assert worker.eeg_buffer.eeg_values == [1.0, 2.0]
+    assert worker.eeg_buffer.timestamps == [1.0, 2.0]
+    assert worker.eeg_buffer.last_ts == 2.0

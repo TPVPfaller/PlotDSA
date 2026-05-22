@@ -48,6 +48,7 @@ class EEGStream:
                 timestamp = dt.strptime(timestamp, "%Y-%m-%d %H:%M:%S.%f")
 
                 if not np.isfinite(value):
+                    print(f"Non-finite EEG value: {value} at {timestamp}")
                     value = np.nan
                 elif value < config.EEG_BOUNDS[0] or value > config.EEG_BOUNDS[1]:
                     print(f"Out of bounds: {value}")

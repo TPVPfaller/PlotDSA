@@ -6,6 +6,7 @@ EEG Density Spectral Array Viewer
 
 import sys
 import time
+import ctypes
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -15,8 +16,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QLabel,
 )
-from PySide6.QtCore import QThread, QTimer, Qt
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QEvent, QThread, QTimer, Qt
+from PySide6.QtGui import QAction, QPalette
 import qdarktheme
 import pyqtgraph as pg
 
@@ -48,12 +49,57 @@ def _enable_windows_darkmode():
         sys.argv += ['-platform', 'windows:darkmode=2']
 
 
+def _colorref_from_rgb(red: int, green: int, blue: int) -> int:
+    return red | (green << 8) | (blue << 16)
+
+
+def _apply_windows_dark_titlebar(hwnd: int, red: int, green: int, blue: int):
+    if sys.platform != "win32":
+        return
+
+    DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+    DWMWA_CAPTION_COLOR = 35
+    DWMWA_TEXT_COLOR = 36
+
+    try:
+        dwmapi = ctypes.windll.dwmapi
+    except AttributeError:
+        return
+
+    dark_mode_enabled = ctypes.c_int(1)
+    caption_color = ctypes.c_uint32(_colorref_from_rgb(red, green, blue))
+    is_dark = (0.2126 * red + 0.7152 * green + 0.0722 * blue) < 140
+    text_color = ctypes.c_uint32(
+        _colorref_from_rgb(255, 255, 255) if is_dark else _colorref_from_rgb(0, 0, 0)
+    )
+
+    dwmapi.DwmSetWindowAttribute(
+        hwnd,
+        DWMWA_USE_IMMERSIVE_DARK_MODE,
+        ctypes.byref(dark_mode_enabled),
+        ctypes.sizeof(dark_mode_enabled),
+    )
+    dwmapi.DwmSetWindowAttribute(
+        hwnd,
+        DWMWA_CAPTION_COLOR,
+        ctypes.byref(caption_color),
+        ctypes.sizeof(caption_color),
+    )
+    dwmapi.DwmSetWindowAttribute(
+        hwnd,
+        DWMWA_TEXT_COLOR,
+        ctypes.byref(text_color),
+        ctypes.sizeof(text_color),
+    )
+
+
 class DSAApplication(QMainWindow):
     """Main application wiring together UI, processing thread and views."""
 
     def __init__(self):
         super().__init__()
         self._closing = False
+        self._themed_window_ids = set()
 
         self.setWindowTitle("EEG Density Spectral Array")
         self.resize(1000, 650)
@@ -64,6 +110,26 @@ class DSAApplication(QMainWindow):
         # self._load_previous_data()  # Removed: Don't load the data at the start only when set in the menu.
         self._init_worker()
         self._init_timers()
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if (
+            event.type() == QEvent.Type.Show
+            and isinstance(obj, QWidget)
+            and obj.isWindow()
+        ):
+            window_id = int(obj.winId())
+            if window_id not in self._themed_window_ids:
+                background = obj.palette().color(QPalette.ColorRole.Window)
+                _apply_windows_dark_titlebar(
+                    window_id,
+                    background.red(),
+                    background.green(),
+                    background.blue(),
+                )
+                self._themed_window_ids.add(window_id)
+
+        return super().eventFilter(obj, event)
 
     def _init_ui(self):
         self.dsa_view = DSAView(self.user_config, self._on_config_change, self._on_zoom_change)

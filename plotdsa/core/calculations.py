@@ -43,11 +43,19 @@ class DSACalculator:
             )
 
         if psd is None:
+            print(f"DSA gap cause: PSD method '{method}' returned no data")
             return np.full(len(config.FREQ_BINS), np.nan, np.float32)
 
         psd = psd[config.FREQ_MASK]
 
         if not np.all(psd):
+            zero_bins = int(np.count_nonzero(psd == 0))
+            nan_bins = int(np.count_nonzero(np.isnan(psd)))
+            inf_bins = int(np.count_nonzero(np.isinf(psd)))
+            print(
+                "DSA gap cause: PSD column contains invalid values "
+                f"(zeros={zero_bins}, nan={nan_bins}, inf={inf_bins})"
+            )
             return np.full(len(psd), np.nan, np.float32)
 
         return psd
@@ -62,6 +70,10 @@ class DSACalculator:
         N = len(eeg_values) // nw # number of windows
 
         if N == 0:
+            print(
+                "DSA gap cause: multitaper window too short for PSD "
+                f"(samples={len(eeg_values)}, n_per_segment={nw})"
+            )
             return None
 
         eeg_values = eeg_values[:(N * nw)] # cut off extra samples
