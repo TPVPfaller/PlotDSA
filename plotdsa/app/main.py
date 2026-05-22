@@ -7,7 +7,6 @@ EEG Density Spectral Array Viewer
 import sys
 import time
 
-sys.argv += ['-platform', 'windows:darkmode=2']
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -42,6 +41,11 @@ else:
     from .worker import ProcessingWorker
     from ..ui.views import DSAView, PSDView, EEGView
     from .. import config
+
+
+def _enable_windows_darkmode():
+    if '-platform' not in sys.argv:
+        sys.argv += ['-platform', 'windows:darkmode=2']
 
 
 class DSAApplication(QMainWindow):
@@ -104,8 +108,6 @@ class DSAApplication(QMainWindow):
             self._load_data_from_time(start_time)
 
     def _load_data_from_time(self, start_time_dt):
-        self.dsa_view.clear_data()
-
         try:
             previous_data = Output.load_psd_from_time(start_time_dt)
         except Exception as e:
@@ -116,6 +118,7 @@ class DSAApplication(QMainWindow):
             self._show_message("Load Data", "No data found for the selected time range.")
             return
 
+        self.dsa_view.clear_data()
         for ts, duration, psd in previous_data:
             self._append_dsa_steps(ts, psd, max(1, int(round(duration / config.TIME_RESOLUTION))))
 
@@ -266,12 +269,12 @@ class DSAApplication(QMainWindow):
             self.psd_view.update(psd)
 
     def _on_new_samples(self, samples):
+        if samples:
+            self._last_data_receive_time = time.time()
         if not self.eeg_view.isVisible():
             return
         for value in samples:
             self.eeg_view.append_sample(value)
-        if samples:
-            self._last_data_receive_time = time.time()
 
 
     def _update_status(self):
@@ -300,6 +303,7 @@ class DSAApplication(QMainWindow):
         self.topbar.apply_config(new_config)
         self.worker.apply_config(new_config)
         self.dsa_view.apply_config(new_config)
+        self.psd_view.apply_config(new_config)
         self.eeg_view.apply_config(new_config)
 
         self._update_status()
@@ -339,6 +343,7 @@ class DSAApplication(QMainWindow):
 
 
 def main():
+    _enable_windows_darkmode()
     qdarktheme.enable_hi_dpi()
 
     app = QApplication(sys.argv)

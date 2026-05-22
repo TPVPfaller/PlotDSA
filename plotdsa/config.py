@@ -6,7 +6,6 @@ Centralized configuration definition and validation.
 """
 from dataclasses import replace, dataclass
 from typing import Tuple
-import math
 import numpy as np
 
 
@@ -16,8 +15,6 @@ These should never change during runtime.
 """
 SAMPLE_RATE_HZ: int = 250
 TIME_RESOLUTION: float = 0.1
-DSA_FPS: float = 0.5
-INTERVAL: float = 1.1
 LOWEST_FREQ_HZ: float = 0.1
 DSA_TIME_DIFF_TOLERANCE: float = 2.0 / SAMPLE_RATE_HZ
 EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ
@@ -36,7 +33,6 @@ MIN_WINDOW_WIDTH: int = 800
 MIN_WINDOW_HEIGHT: int = 530
 N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for PSD
 FONT_SIZE = 18
-TEXT_COLOR = (220, 220, 220)
 TEXT_COLOR_STR = "#D1D1D1"
 
 # Default values

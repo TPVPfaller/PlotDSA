@@ -5,7 +5,7 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph import ColorBarItem, GridItem
 from PySide6.QtCore import QByteArray, QSize, Qt, QEvent, QTimer
-from PySide6.QtGui import QFont, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from scipy.signal import lfilter
 import time
@@ -57,6 +57,27 @@ def create_settings_gear_icon(size=18):
     renderer.render(painter)
     painter.end()
 
+    return QIcon(pixmap)
+
+
+def create_stepper_icon(direction, size=20):
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    pen = QPen(Qt.white)
+    pen.setWidth(2)
+    pen.setCapStyle(Qt.RoundCap)
+    painter.setPen(pen)
+
+    center = size / 2
+    inset = max(4, size // 4)
+    painter.drawLine(inset, center, size - inset, center)
+    if direction == "plus":
+        painter.drawLine(center, inset, center, size - inset)
+
+    painter.end()
     return QIcon(pixmap)
 
 
@@ -245,6 +266,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
 
         self.dsa_value_labels = {}
+        self._app_event_filter_installed = False
 
         self.settings_button = QToolButton(self.viewport())
         self.settings_button.setCursor(Qt.PointingHandCursor)
@@ -277,7 +299,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             }}
             QLabel {{
                 color: white;
-                font-size: {config.FONT_SIZE}px;
+                font-size: {max(config.FONT_SIZE - 2, 8)}px;
                 font-weight: 600;
             }}
             QPushButton {{
@@ -286,7 +308,11 @@ class DSAView(pg.GraphicsLayoutWidget):
                 border: none;
                 border-radius: 4px;
                 font-weight: bold;
-                font-size: {config.FONT_SIZE + 4}px;
+                font-size: {max(config.FONT_SIZE, 8)}px;
+                padding: 0px;
+                text-align: center;
+            }}
+            QPushButton[role="stepper"] {{
                 padding: 0px;
                 text-align: center;
             }}
@@ -295,7 +321,7 @@ class DSAView(pg.GraphicsLayoutWidget):
             }}
             QLabel[role="value"] {{
                 border-radius: 4px;
-                font-size: {config.FONT_SIZE + 1}px;
+                font-size: {max(config.FONT_SIZE - 1, 8)}px;
                 font-weight: bold;
                 padding: 6px 8px;
             }}
@@ -328,7 +354,10 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         self._sync_settings_labels()
         self._update_settings_button_pos()
-        QApplication.instance().installEventFilter(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._app_event_filter_installed = True
 
     def _create_step_control_row(self, title, field_name, formatter, minus_handler, plus_handler):
         from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
@@ -342,8 +371,17 @@ class DSAView(pg.GraphicsLayoutWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
 
-        minus_button = QPushButton("-")
+        stepper_font = QFont()
+        stepper_font.setBold(True)
+        stepper_font.setPixelSize(max(config.FONT_SIZE + 4, 12))
+
+        minus_button = QPushButton("−")
+        minus_button.setProperty("role", "stepper")
         minus_button.setFixedSize(36, 36)
+        minus_button.setFont(stepper_font)
+        minus_button.setText("")
+        minus_button.setIcon(create_stepper_icon("minus"))
+        minus_button.setIconSize(QSize(20, 20))
         minus_button.clicked.connect(minus_handler)
         row.addWidget(minus_button)
 
@@ -355,7 +393,12 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.dsa_value_labels[field_name] = (value_label, formatter)
 
         plus_button = QPushButton("+")
+        plus_button.setProperty("role", "stepper")
         plus_button.setFixedSize(36, 36)
+        plus_button.setFont(stepper_font)
+        plus_button.setText("")
+        plus_button.setIcon(create_stepper_icon("plus"))
+        plus_button.setIconSize(QSize(20, 20))
         plus_button.clicked.connect(plus_handler)
         row.addWidget(plus_button)
 
@@ -416,6 +459,16 @@ class DSAView(pg.GraphicsLayoutWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._update_settings_button_pos()
+
+    def closeEvent(self, event):
+        if getattr(self, "_app_event_filter_installed", False):
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                app.removeEventFilter(self)
+            self._app_event_filter_installed = False
+        super().closeEvent(event)
 
     def _adjust_psd_level(self, field_name, delta):
         current_value = getattr(self.user_config, field_name)
@@ -557,7 +610,6 @@ class DSAView(pg.GraphicsLayoutWidget):
         self._pan_sec = current_start + visible_width_sec * delta_percent
 
         self.update()
-        self.update()
 
     def clear_data(self):
         """Delete all buffered data"""
@@ -661,6 +713,7 @@ class PSDView(pg.PlotWidget):
         super().__init__()
         self.user_config = user_config
         self.on_config_change = on_config_change
+        self._last_psd = None
 
         set_axis_label(self.plotItem, "bottom", "Frequency", units="Hz")
         set_axis_label(self.plotItem, "left", "Power", units="dB")
@@ -674,11 +727,19 @@ class PSDView(pg.PlotWidget):
         self.curve = self.plot(pen=pg.mkPen("y", width=2), title="PSD")
 
         self.setInteractive(False)
-        self.setYRange(user_config.psd_db_min - 5, user_config.psd_db_max + 5)
+        self.apply_config(user_config)
 
     def update(self, psd):
+        self._last_psd = np.asarray(psd, dtype=np.float32)
         psd_db = 10 * np.log10(np.clip(psd, np.finfo(np.float32).eps, None))
         self.curve.setData(config.FREQ_BINS, psd_db)
+
+    def apply_config(self, user_config):
+        self.user_config = user_config
+        self.setXRange(config.LOWEST_FREQ_HZ, user_config.max_freq_hz, padding=0)
+        self.setYRange(user_config.psd_db_min - 5, user_config.psd_db_max + 5, padding=0)
+        if self._last_psd is not None:
+            self.update(self._last_psd)
 
 
 
@@ -695,12 +756,6 @@ class EEGView(pg.PlotWidget):
 
         # --- Plot setup ---
         self.getPlotItem().setContentsMargins(10, 10, 60, 10)
-        self.getPlotItem().setLabel("left", "EEG", units="µV")
-        self.getPlotItem().setLabel("bottom", "Time", units="s")
-        self.getPlotItem().getAxis("bottom").setPen('w')
-        self.getPlotItem().getAxis("bottom").setTextPen('w')
-        self.getPlotItem().getAxis("left").setPen('w')
-        self.getPlotItem().getAxis("left").setTextPen('w')
         set_axis_label(self.plotItem, "left", "EEG", units="\N{MICRO SIGN}V")
         set_axis_label(self.plotItem, "bottom", "Time", units="s")
         set_uniform_left_axis_width(self.plotItem)
@@ -724,13 +779,8 @@ class EEGView(pg.PlotWidget):
         self.setInteractive(False)
 
         self.curve_a = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
-        self.curve_b = self.plot(pen=pg.mkPen((0, 200, 255), width=1))
         self.missing_curve_a = self.plot(pen=pg.mkPen((255, 80, 80), width=2))
-        self.missing_curve_b = self.plot(pen=pg.mkPen((255, 80, 80), width=2))
         self.missing_curve_a.setDownsampling(auto=False, ds=1, method="subsample")
-        self.missing_curve_b.setDownsampling(auto=False, ds=1, method="subsample")
-        self.curve_b.hide()
-        self.missing_curve_b.hide()
 
         # Sweep line
         self.update_line = pg.InfiniteLine(angle=90, pen=pg.mkPen("w", style=Qt.DashLine))
@@ -778,6 +828,7 @@ class EEGView(pg.PlotWidget):
         self.sweep_buttons = {}
         self.amplitude_buttons = {}
         self.is_paused = False
+        self._app_event_filter_installed = False
 
         self.settings_button = QToolButton(self.viewport())
         self.settings_button.setCursor(Qt.PointingHandCursor)
@@ -835,7 +886,7 @@ class EEGView(pg.PlotWidget):
             }}
             QLabel {{
                 color: white;
-                font-size: {config.FONT_SIZE}px;
+                font-size: {max(config.FONT_SIZE - 2, 8)}px;
                 font-weight: 600;
             }}
         """)
@@ -865,7 +916,10 @@ class EEGView(pg.PlotWidget):
         self._sync_sweep_buttons()
         self._sync_amplitude_buttons()
         self._update_settings_button_pos()
-        QApplication.instance().installEventFilter(self)
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._app_event_filter_installed = True
 
     def _create_settings_button_row(self, options, button_map, handler):
         from PySide6.QtWidgets import QHBoxLayout, QPushButton
@@ -886,7 +940,7 @@ class EEGView(pg.PlotWidget):
                     border: none;
                     border-radius: 4px;
                     font-weight: bold;
-                    font-size: {config.FONT_SIZE - 2}px;
+                    font-size: {max(config.FONT_SIZE - 3, 8)}px;
                 }}
                 QPushButton:hover {{
                     background-color: rgba(80, 80, 80, 210);
@@ -1118,6 +1172,17 @@ class EEGView(pg.PlotWidget):
         self._update_time_scale()
         self._update_settings_button_pos()
 
+    def closeEvent(self, event):
+        self._timer.stop()
+        if getattr(self, "_app_event_filter_installed", False):
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                app.removeEventFilter(self)
+            self._app_event_filter_installed = False
+        super().closeEvent(event)
+
     def clear_data(self):
         self.history.clear()
         self.display.fill(np.nan)
@@ -1127,9 +1192,7 @@ class EEGView(pg.PlotWidget):
         self._reset_view_filter_state()
         self.update_line.setPos(0)
         self.curve_a.clear()
-        self.curve_b.clear()
         self.missing_curve_a.clear()
-        self.missing_curve_b.clear()
 
     def apply_config(self, user_config):
         self.user_config = user_config

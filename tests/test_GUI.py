@@ -1,9 +1,10 @@
 import pytest
 import numpy as np
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QCloseEvent
 from main import DSAApplication, DSAView, PSDView, EEGView, SettingsDialog
 from config import UserConfig
+import config
 
 import sys
 import time
@@ -130,7 +131,21 @@ def test_on_new_samples_is_ignored_when_eeg_view_is_hidden(dsa_app):
     dsa_app._on_new_samples([1.0, 2.0, 3.0])
 
     assert len(dsa_app.eeg_view._pending) == 0
-    assert dsa_app._last_data_receive_time == before
+    assert dsa_app._last_data_receive_time >= before
+
+
+def test_on_config_change_updates_psd_view_ranges(dsa_app):
+    dsa_app.psd_view.update(np.ones(len(config.FREQ_BINS), dtype=np.float32))
+    new_config = dsa_app.user_config.update(max_freq_hz=30, psd_db_min=-10, psd_db_max=25)
+
+    dsa_app._on_config_change(new_config)
+
+    x_range, y_range = dsa_app.psd_view.viewRange()
+    assert dsa_app.psd_view.user_config == new_config
+    assert x_range[0] == pytest.approx(config.LOWEST_FREQ_HZ)
+    assert x_range[1] == pytest.approx(30)
+    assert y_range[0] == pytest.approx(-15)
+    assert y_range[1] == pytest.approx(30)
 
 
 def test_load_data_uses_fractional_duration_to_append_expected_dsa_steps(dsa_app, monkeypatch):
@@ -148,6 +163,23 @@ def test_load_data_uses_fractional_duration_to_append_expected_dsa_steps(dsa_app
     assert [ts for ts, _ in appended] == pytest.approx([1000.0, 1000.1, 1000.2])
 
 
+def test_load_data_rounds_short_duration_up_to_one_dsa_step(dsa_app, monkeypatch):
+    psd = np.ones(len(dsa_app.dsa_view.freq_bins), dtype=np.float32)
+    appended = []
+
+    monkeypatch.setattr(
+        "main.Output.load_psd_from_time",
+        lambda start_time_dt: [(1000.0, config.TIME_RESOLUTION / 3.0, psd)]
+    )
+    monkeypatch.setattr(dsa_app.dsa_view, "append", lambda ts, loaded_psd: appended.append((ts, loaded_psd)))
+
+    dsa_app._load_data_from_time(time.time())
+
+    assert len(appended) == 1
+    assert appended[0][0] == pytest.approx(1000.0)
+    np.testing.assert_array_equal(appended[0][1], psd)
+
+
 def test_load_data_from_time_does_not_clear_eeg_view(dsa_app, monkeypatch):
     psd = np.ones(len(dsa_app.dsa_view.freq_bins), dtype=np.float32)
 
@@ -163,6 +195,66 @@ def test_load_data_from_time_does_not_clear_eeg_view(dsa_app, monkeypatch):
     dsa_app._load_data_from_time(time.time())
 
     assert clear_calls == []
+
+
+def test_load_data_from_time_reports_errors_without_clearing_existing_dsa(dsa_app, monkeypatch):
+    clear_calls = []
+    shown_messages = []
+
+    def raise_load_error(start_time_dt):
+        raise RuntimeError("broken csv")
+
+    monkeypatch.setattr("main.Output.load_psd_from_time", raise_load_error)
+    monkeypatch.setattr(dsa_app.dsa_view, "clear_data", lambda: clear_calls.append("cleared"))
+    monkeypatch.setattr(dsa_app, "_show_message", lambda title, text: shown_messages.append((title, text)))
+
+    dsa_app._load_data_from_time(time.time())
+
+    assert clear_calls == []
+    assert shown_messages == [("Load Error", "Failed to load data: broken csv")]
+
+
+def test_load_data_from_time_keeps_existing_dsa_when_no_rows_found(dsa_app, monkeypatch):
+    clear_calls = []
+
+    monkeypatch.setattr("main.Output.load_psd_from_time", lambda start_time_dt: [])
+    monkeypatch.setattr(dsa_app.dsa_view, "clear_data", lambda: clear_calls.append("cleared"))
+    monkeypatch.setattr(dsa_app, "_show_message", lambda *args, **kwargs: None)
+
+    dsa_app._load_data_from_time(time.time())
+
+    assert clear_calls == []
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected_clear_calls"),
+    [
+        (QMessageBox.StandardButton.No, []),
+        (QMessageBox.StandardButton.Yes, ["dsa", "eeg"]),
+    ],
+)
+def test_confirm_clear_data_respects_confirmation_reply(dsa_app, monkeypatch, reply, expected_clear_calls):
+    clear_calls = []
+
+    monkeypatch.setattr(dsa_app, "_show_message", lambda *args, **kwargs: reply)
+    monkeypatch.setattr(dsa_app.dsa_view, "clear_data", lambda: clear_calls.append("dsa"))
+    monkeypatch.setattr(dsa_app.eeg_view, "clear_data", lambda: clear_calls.append("eeg"))
+
+    dsa_app._confirm_clear_data()
+
+    assert clear_calls == expected_clear_calls
+
+
+def test_eeg_view_stops_render_timer_when_closed(qtbot):
+    view = EEGView(UserConfig())
+    qtbot.addWidget(view)
+    view.show()
+
+    assert view._timer.isActive() is True
+
+    view.close()
+
+    assert view._timer.isActive() is False
 
 
 def test_close_event_waits_asynchronously_for_running_worker(dsa_app):

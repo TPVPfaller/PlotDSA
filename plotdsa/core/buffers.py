@@ -20,7 +20,6 @@ class DSABuffer:
 
     def __init__(self):
         self.max_minutes = config.DISPLAY_MINUTES_BOUNDS[1]
-        self.n_freqs = len(config.FREQ_BINS)
         self.t0 = None
         try:
             self._reset()
@@ -30,7 +29,6 @@ class DSABuffer:
             self._reset()
 
     def _reset(self):
-        self.latest_timestamp = None
         self.buffers = {
             res: {
                 "data": {},
@@ -51,7 +49,6 @@ class DSABuffer:
 
         if self.t0 is None:
             self.t0 = self._snap_to_resolution(ts, self.RESOLUTIONS[0])
-        self.latest_timestamp = ts
 
         for res, buf in self.buffers.items():
             self._append_to_res(buf, self._get_slot(ts, res), psd, res)
@@ -104,9 +101,6 @@ class DSABuffer:
         oldest_slot = self._get_oldest_slot(base_res)
         return time.time() if oldest_slot is None else self.t0 + oldest_slot * base_res
 
-    def get_newest_timestamp(self):
-        return time.time() if self.latest_timestamp is None else self.latest_timestamp
-
     def get_view_at(self, width, height, pan_sec, target_resolution):
         """Return a frame starting at pan_sec with optimal resolution."""
         res = min(self.RESOLUTIONS, key=lambda x: abs(x - target_resolution))
@@ -148,8 +142,6 @@ class EEGBuffer:
         self.processor = DSACalculator(window_sec)
         self.window_len = int(window_sec * config.SAMPLE_RATE_HZ)
         self.hop_len = max(1, int(self.window_len * (1.0 - overlap)))
-        self._pending_view_samples = []
-        self._view_window_started = False
 
     def _get_ts_diff(self, timestamp, value):
         if self.last_ts is not None:
@@ -169,20 +161,6 @@ class EEGBuffer:
         self.eeg_values.clear()
         self.timestamps.clear()
         self.last_ts = None
-        self._view_window_started = False
-
-    def _append_view_samples(self, filtered_window):
-        if not self._view_window_started:
-            self._pending_view_samples.extend(filtered_window.tolist())
-            self._view_window_started = True
-            return
-
-        self._pending_view_samples.extend(filtered_window[-self.hop_len:].tolist())
-
-    def consume_view_samples(self):
-        samples = self._pending_view_samples
-        self._pending_view_samples = []
-        return samples
 
     def get_dsa_columns(self, data, method="multitaper"):
         if data is None or len(data) == 0:
@@ -207,7 +185,6 @@ class EEGBuffer:
                 window_start_ts = self.timestamps[0]
                 filtered_window = self.processor.filter_window(window)
                 psd = self.processor.compute_psd_from_filtered(filtered_window, method=method)
-                self._append_view_samples(filtered_window)
                 if isinstance(window_start_ts, datetime.datetime):
                     dsa_ts = window_start_ts.timestamp()
                 else:
@@ -225,5 +202,4 @@ class EEGBuffer:
         if self.hop_len < 1:
             self.hop_len = 1
         self.processor.update_config(window_sec)
-        self._pending_view_samples = []
-        self._view_window_started = False
+        self._reset_state()

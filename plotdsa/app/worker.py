@@ -33,16 +33,24 @@ class ProcessingWorker(QObject):
     def apply_config(self, user_config):
         self._new_config = user_config
 
+    def _apply_pending_config(self):
+        if self._new_config is None:
+            return False
+
+        self.user_config = self._new_config
+        self._new_config = None
+        self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
+        self._next_dsa_slot = None
+        self._expected_dsa_ts = None
+        return True
+
     @Slot()
     def run(self):
         next_time = time.time()
         try:
             while self.running:
 
-                if self._new_config:
-                    self.user_config = self._new_config
-                    self._new_config = None
-                    self.eeg_buffer.apply_config(self.user_config.window_sec, self.user_config.window_overlap)
+                self._apply_pending_config()
                 if not self.stream.receiving:
                     self.stream.connect()
                     # Emit on change

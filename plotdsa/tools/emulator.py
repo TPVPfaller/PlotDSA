@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timedelta
 import math
 from pylsl import StreamInfo, StreamOutlet
-import random
 
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ except (ImportError, ValueError):
 # =========================
 # Configuration
 # =========================
-DATA_DIR = "..\..\Entropy_Data"
+DATA_DIR = r"..\..\Entropy_Data"
 
 STREAM_NAME = "EEG_DATA"
 STREAM_TYPE = "EEG"
@@ -101,7 +100,7 @@ def main():
 
                 for idx, value in enumerate(values):
                     ts += timedelta(seconds=interval)
-                    emitted_value = inject_missing_value(idx, value)
+                    #emitted_value = inject_missing_value(idx, value)
 
                     ts_str = ts.strftime("%Y-%m-%d %H:%M:%S.%f")
                     samples.append(f"{ts_str},{value}")

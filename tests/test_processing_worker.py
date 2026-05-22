@@ -71,22 +71,44 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
     assert saved_calls[0][1][1] == 10 * config.TIME_RESOLUTION
 
 
-def test_discretize_dsa_column_keeps_continuous_half_second_hops_contiguous(monkeypatch):
+def test_discretize_dsa_column_keeps_continuous_one_second_hops_contiguous(monkeypatch):
     monkeypatch.setattr("worker.EEGStream", DummyStream)
 
-    worker = ProcessingWorker(UserConfig(window_sec=1, window_overlap=0.5))
+    worker = ProcessingWorker(UserConfig(window_sec=2, window_overlap=0.5))
 
     emitted = [
-        worker._discretize_dsa_column(1000.9 + i * 0.5)
+        worker._discretize_dsa_column(1000.9 + i * 1.0)
         for i in range(4)
     ]
 
     expected = [
-        (1000.9, 5),
-        (1001.4, 5),
-        (1001.9, 5),
-        (1002.4, 5),
+        (1000.9, 10),
+        (1001.9, 10),
+        (1002.9, 10),
+        (1003.9, 10),
     ]
     for (actual_ts, actual_steps), (expected_ts, expected_steps) in zip(emitted, expected):
         assert actual_ts == pytest.approx(expected_ts)
         assert actual_steps == expected_steps
+
+
+def test_apply_pending_config_resets_worker_and_eeg_buffer_state(monkeypatch):
+    monkeypatch.setattr("worker.EEGStream", DummyStream)
+
+    worker = ProcessingWorker(UserConfig(window_sec=2, window_overlap=0.5))
+    worker._next_dsa_slot = 123
+    worker._expected_dsa_ts = 456.0
+    worker.eeg_buffer.eeg_values = [1.0, 2.0]
+    worker.eeg_buffer.timestamps = [1.0, 2.0]
+    worker.eeg_buffer.last_ts = 2.0
+
+    worker.apply_config(worker.user_config.update(window_sec=4, window_overlap=0.25))
+
+    assert worker._apply_pending_config() is True
+    assert worker._next_dsa_slot is None
+    assert worker._expected_dsa_ts is None
+    assert worker.eeg_buffer.window_len == 4 * config.SAMPLE_RATE_HZ
+    assert worker.eeg_buffer.hop_len == int(worker.eeg_buffer.window_len * 0.75)
+    assert worker.eeg_buffer.eeg_values == []
+    assert worker.eeg_buffer.timestamps == []
+    assert worker.eeg_buffer.last_ts is None

@@ -30,7 +30,6 @@ class DSACalculator:
     def filter_window(self, eeg_values):
         return self._apply_filters(np.asarray(eeg_values, dtype=np.float32))
 
-
     def compute_psd_from_filtered(self, filtered, method='multitaper'):
         if method == 'multitaper':
             psd = self.multitaper_method(filtered)

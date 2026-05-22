@@ -1,27 +1,12 @@
 import numpy as np
 from calculations import DSACalculator
 import config
-
-
-
-
 def generate_sine(freq, seconds, sr, noise=0.0):
     t = np.arange(0, seconds, 1 / sr)
     sig = np.sin(2 * np.pi * freq * t)
     if noise > 0:
         sig += np.random.normal(0, noise, size=len(sig))
     return sig
-
-def test_multitaper():
-    calc = DSACalculator(window_sec=2)
-    # TODO: read data from file Entropy_data/JSMF_001_filtered_emergence.csv and
-    #  save result in tests/expected_multitaper.csv if it doesn't exist, else compare output with expected.
-
-
-def test_welch():
-    calc = DSACalculator(window_sec=2)
-    # TODO: read data from file Entropy_data/JSMF_001_filtered_emergence.csv and
-    #  save result in tests/expected_welch.csv if it doesn't exist, else compare output with expected.
 
 def test_psd_returns_correct_frequency_range():
     calc = DSACalculator(window_sec=4)
@@ -96,10 +81,10 @@ def test_psd_welch_mode_uses_same_frequency_bins():
     assert np.isfinite(psd).all()
 
 
-def test_one_second_window_keeps_dsa_frequency_shape_for_both_psd_methods():
-    calc = DSACalculator(window_sec=1)
+def test_minimum_supported_two_second_window_keeps_dsa_frequency_shape_for_both_psd_methods():
+    calc = DSACalculator(window_sec=2)
     sr = config.SAMPLE_RATE_HZ
-    t = np.arange(0, 1, 1 / sr)
+    t = np.arange(0, 2, 1 / sr)
     signal = np.sin(2 * np.pi * 10 * t)
 
     for method in ("multitaper", "welch"):
