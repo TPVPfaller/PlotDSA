@@ -266,6 +266,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         from PySide6.QtWidgets import QApplication, QFrame, QLabel, QToolButton, QVBoxLayout
 
         self.dsa_value_labels = {}
+        self.dsa_stepper_buttons = {}
         self._app_event_filter_installed = False
 
         self.settings_button = QToolButton(self.viewport())
@@ -318,6 +319,10 @@ class DSAView(pg.GraphicsLayoutWidget):
             }}
             QPushButton:hover {{
                 background-color: rgba(80, 80, 80, 210);
+            }}
+            QPushButton:disabled {{
+                background-color: rgba(45, 45, 45, 120);
+                color: rgba(255, 255, 255, 80);
             }}
             QLabel[role="value"] {{
                 border-radius: 4px;
@@ -401,6 +406,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         plus_button.setIconSize(QSize(20, 20))
         plus_button.clicked.connect(plus_handler)
         row.addWidget(plus_button)
+        self.dsa_stepper_buttons[field_name] = (minus_button, plus_button)
 
         block.addLayout(row)
         return block
@@ -408,6 +414,28 @@ class DSAView(pg.GraphicsLayoutWidget):
     def _sync_settings_labels(self):
         for field_name, (label, formatter) in self.dsa_value_labels.items():
             label.setText(formatter(getattr(self.user_config, field_name)))
+        self._sync_step_control_states()
+
+    def _can_adjust_step_control(self, field_name, delta):
+        current_value = getattr(self.user_config, field_name)
+        if field_name == "max_freq_hz":
+            min_bound, max_bound = config.MAX_FREQ_HZ_BOUNDS
+        else:
+            min_bound, max_bound = getattr(config, f"{field_name.upper()}_BOUNDS")
+        new_value = current_value + delta
+
+        if not (min_bound <= new_value <= max_bound):
+            return False
+        if field_name == "psd_db_min":
+            return new_value < self.user_config.psd_db_max
+        if field_name == "psd_db_max":
+            return new_value > self.user_config.psd_db_min
+        return True
+
+    def _sync_step_control_states(self):
+        for field_name, (minus_button, plus_button) in self.dsa_stepper_buttons.items():
+            minus_button.setEnabled(self._can_adjust_step_control(field_name, -1))
+            plus_button.setEnabled(self._can_adjust_step_control(field_name, 1))
 
     def _toggle_settings_popup(self):
         if self.settings_popup.isVisible():
