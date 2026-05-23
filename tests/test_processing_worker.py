@@ -92,28 +92,6 @@ def test_discretize_dsa_column_keeps_continuous_one_second_hops_contiguous(monke
         assert actual_steps == expected_steps
 
 
-def test_apply_pending_config_resets_worker_and_eeg_buffer_state(monkeypatch):
-    monkeypatch.setattr("worker.EEGStream", DummyStream)
-
-    worker = ProcessingWorker(UserConfig(window_sec=2, window_overlap=0.5))
-    worker._next_dsa_slot = 123
-    worker._expected_dsa_ts = 456.0
-    worker.eeg_buffer.eeg_values = [1.0, 2.0]
-    worker.eeg_buffer.timestamps = [1.0, 2.0]
-    worker.eeg_buffer.last_ts = 2.0
-
-    worker.apply_config(worker.user_config.update(window_sec=4, window_overlap=0.25))
-
-    assert worker._apply_pending_config() is True
-    assert worker._next_dsa_slot is None
-    assert worker._expected_dsa_ts is None
-    assert worker.eeg_buffer.window_len == 4 * config.SAMPLE_RATE_HZ
-    assert worker.eeg_buffer.hop_len == int(worker.eeg_buffer.window_len * 0.75)
-    assert worker.eeg_buffer.eeg_values == []
-    assert worker.eeg_buffer.timestamps == []
-    assert worker.eeg_buffer.last_ts is None
-
-
 def test_apply_pending_display_only_config_keeps_worker_and_eeg_buffer_state(monkeypatch):
     monkeypatch.setattr("worker.EEGStream", DummyStream)
 

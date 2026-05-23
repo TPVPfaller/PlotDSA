@@ -1,6 +1,7 @@
 import numpy as np
 from calculations import DSACalculator
 import config
+
 def generate_sine(freq, seconds, sr, noise=0.0):
     t = np.arange(0, seconds, 1 / sr)
     sig = np.sin(2 * np.pi * freq * t)

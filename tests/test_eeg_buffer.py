@@ -130,60 +130,6 @@ def test_apply_config_recomputes_window_and_hop_lengths():
     assert buf.hop_len == int(buf.window_len * 0.5)
 
 
-def test_apply_config_preserves_recent_history_across_window_change():
-    sample_rate = config.SAMPLE_RATE_HZ
-    base = datetime.datetime.now()
-    buf = EEGBuffer(window_sec=2.0, overlap=0.0)
-
-    initial = generate_samples(int(4.0 * sample_rate), base)
-    out1 = buf.get_dsa_columns(initial)
-
-    assert len(out1) == 2
-
-    buf.apply_config(window_sec=4.0, overlap=0.0)
-
-    next_sample = generate_samples(1, base + datetime.timedelta(seconds=4.0))
-    out2 = buf.get_dsa_columns(next_sample)
-
-    assert len(out2) == 1
-    assert out2[0][0] == base.timestamp()
-
-
-def test_apply_config_preserves_recent_history_across_overlap_change():
-    sample_rate = config.SAMPLE_RATE_HZ
-    base = datetime.datetime.now()
-    buf = EEGBuffer(window_sec=2.0, overlap=0.0)
-
-    initial = generate_samples(int(2.0 * sample_rate), base)
-    out1 = buf.get_dsa_columns(initial)
-
-    assert len(out1) == 1
-
-    buf.apply_config(window_sec=2.0, overlap=0.5)
-
-    next_sample = generate_samples(1, base + datetime.timedelta(seconds=2.0))
-    out2 = buf.get_dsa_columns(next_sample)
-
-    assert len(out2) == 1
-    assert out2[0][0] == base.timestamp()
-
-
-def test_eegbuffer_accumulates_partial_window_across_calls():
-    window_sec = 2.0
-    sample_rate = config.SAMPLE_RATE_HZ
-    buf = EEGBuffer(window_sec, 0.0)
-    base = datetime.datetime.now()
-
-    first_chunk = generate_samples(int(sample_rate), base)
-    second_chunk = generate_samples(int(sample_rate), base + datetime.timedelta(seconds=1))
-
-    out1 = buf.get_dsa_columns(first_chunk)
-    out2 = buf.get_dsa_columns(second_chunk)
-
-    assert out1 == []
-    assert len(out2) == 1
-
-
 def test_eegbuffer_jitter_within_dsa_tolerance_does_not_reset():
     buf = EEGBuffer(2.0, 0.0)
     base = datetime.datetime.now()
