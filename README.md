@@ -32,5 +32,11 @@ python -m nuitka --onefile --standalone `
   --include-data-file=".venv\Lib\site-packages\pylsl\lib\lsl.dll=pylsl/lib/lsl.dll" `
   --windows-icon-from-ico=app_icon.ico `
   --windows-disable-console `
-  --output-filename=DSA-1.0.exe plotdsa\app\main.py
+  --windows-product-version=1.0.0.0 `
+  --windows-file-version=1.0.0.0 `
+  --windows-product-name="DSA" `
+  --windows-file-description="DSA Application" `
+  --windows-company-name="Your Name or Company" `
+  --output-filename=DSA.exe `
+  plotdsa\app\main.py
 ```
