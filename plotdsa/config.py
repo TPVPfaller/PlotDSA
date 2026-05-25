@@ -14,7 +14,7 @@ Immutable system constants.
 These should never change during runtime.
 """
 SAMPLE_RATE_HZ: int = 250
-TIME_RESOLUTION: float = 0.1
+TIME_RESOLUTION: float = 0.25
 LOWEST_FREQ_HZ: float = 0.1
 DSA_TIME_DIFF_TOLERANCE: float = 2.0 / SAMPLE_RATE_HZ
 EEG_TIME_DIFF_TOLERANCE: float = 0.5 / SAMPLE_RATE_HZ

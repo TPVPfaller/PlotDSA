@@ -28,6 +28,7 @@ def create_reset_icon(size=18):
 # ------------------ TopBar ------------------ #
 class TopBar(QWidget):
     BUTTON_HEIGHT = 42
+    ZOOM_SLIDER_MAX = 1000
 
     def __init__(self, user_config, on_config_change, on_zoom_change, on_pan, on_calibrate):
         super().__init__()
@@ -65,7 +66,7 @@ class TopBar(QWidget):
 
         self.zoom_slider = QSlider(Qt.Horizontal)
         self.zoom_slider.setMinimum(1)
-        self.zoom_slider.setMaximum(100)
+        self.zoom_slider.setMaximum(self.ZOOM_SLIDER_MAX)
         self.zoom_slider.setStyleSheet(f"""
             QSlider {{
                 background: transparent;
@@ -183,8 +184,9 @@ class TopBar(QWidget):
 
     def _zoom_changed(self, value):
         min_minutes, max_minutes = config.DISPLAY_MINUTES_BOUNDS
+        slider_span = self.zoom_slider.maximum() - self.zoom_slider.minimum()
 
-        t = (value - 1) / 99.0  # 0..1 linear
+        t = (value - self.zoom_slider.minimum()) / slider_span  # 0..1 linear
 
         # invert gamma effect for desired behavior
         t = 1.0 - (1.0 - t) ** self.GAMMA
@@ -201,7 +203,8 @@ class TopBar(QWidget):
         # inverse of forward curve
         t = 1.0 - (1.0 - t) ** (1.0 / self.GAMMA)
 
-        val_zoom = 1 + 99.0 * t
+        slider_span = self.zoom_slider.maximum() - self.zoom_slider.minimum()
+        val_zoom = self.zoom_slider.minimum() + slider_span * t
 
         self.zoom_slider.blockSignals(True)
         self.zoom_slider.setValue(int(round(val_zoom)))

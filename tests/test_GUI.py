@@ -66,6 +66,21 @@ def test_initial_ui_state(dsa_app):
     assert hasattr(dsa_app.topbar, "live_btn")
     assert hasattr(dsa_app.topbar, "zoom_slider")
     assert hasattr(dsa_app.topbar, "calibrate_btn")
+    assert dsa_app.topbar.zoom_slider.maximum() == dsa_app.topbar.ZOOM_SLIDER_MAX
+
+
+def test_zoom_slider_has_fine_control_when_zoomed_in(dsa_app):
+    max_value = dsa_app.topbar.zoom_slider.maximum()
+
+    dsa_app.topbar.zoom_slider.setValue(max_value - 1)
+    almost_min_zoom = dsa_app.dsa_view.display_minutes
+
+    dsa_app.topbar.zoom_slider.setValue(max_value)
+    min_zoom = dsa_app.dsa_view.display_minutes
+
+    assert min_zoom == pytest.approx(config.DISPLAY_MINUTES_BOUNDS[0])
+    assert almost_min_zoom > min_zoom
+    assert almost_min_zoom - min_zoom < 0.01
 
 
 def test_menu_toggle_views(qtbot, dsa_app):
