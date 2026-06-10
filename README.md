@@ -31,7 +31,7 @@ python -m nuitka --onefile --standalone `
   --include-module=PySide6.QtOpenGL `
   --include-data-file=".venv\Lib\site-packages\pylsl\lib\lsl.dll=pylsl/lib/lsl.dll" `
   --windows-icon-from-ico=app_icon.ico `
-  --windows-disable-console `
+  --windows-console-mode=disable `
   --windows-product-version=1.0.0.0 `
   --windows-file-version=1.0.0.0 `
   --windows-product-name="DSA" `
