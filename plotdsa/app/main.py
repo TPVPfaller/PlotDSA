@@ -142,30 +142,48 @@ class DSAApplication(QMainWindow):
         container = QWidget()
         self.layout = QVBoxLayout(container)
         self.layout.setSpacing(0)
+        self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self.disclaimer_label = QLabel("Nur zu Lehrzwecken")
-        self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 22px; margin-bottom: -5px; margin-top: -10px")
-        self.disclaimer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.disclaimer_label = QLabel("Nur zu Lehrzwecken", self)
+        self.disclaimer_label.setStyleSheet("color: red; font-weight: bold; font-size: 22px;")
+        self.disclaimer_label.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+        )
+        self.disclaimer_label.setFixedHeight(32)
 
-        self.layout.addWidget(self.disclaimer_label)
+        self.layout.addSpacing(23)
         self.layout.addWidget(self.topbar)
         self.layout.addWidget(self.dsa_view)
         self.layout.addWidget(self.psd_view)
         self.layout.addWidget(self.eeg_view)
 
-        self.layout.setStretchFactor(self.disclaimer_label, 0)
         self.layout.setStretchFactor(self.topbar, 0)
         self.layout.setStretchFactor(self.dsa_view, 1)
         self.layout.setStretchFactor(self.psd_view, 1)
         self.layout.setStretchFactor(self.eeg_view, 1)
 
         self.setCentralWidget(container)
+        self._position_disclaimer_label()
 
         self._sync_view_visibility()
 
         self.topbar.live_btn.clicked.connect(self.dsa_view.jump_to_live)
         self.topbar.sync_slider(self.user_config.display_minutes)
         pg.setConfigOptions(antialias=False)
+
+    def _position_disclaimer_label(self):
+        self.disclaimer_label.setGeometry(
+            0,
+            self.menuBar().height() - 8,
+            self.width(),
+            self.disclaimer_label.height(),
+        )
+        self.disclaimer_label.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "disclaimer_label"):
+            self._position_disclaimer_label()
 
     def _on_load_data_clicked(self):
         dialog = TimeSelectionDialog(self)
@@ -203,6 +221,36 @@ class DSAApplication(QMainWindow):
         if default_button is not None:
             msg.setDefaultButton(default_button)
         msg.setOption(QMessageBox.Option.DontUseNativeDialog, True)
+
+        msg.setStyleSheet(f"""
+            QLabel {{
+                font-size: {config.FONT_SIZE}px;
+            }}
+            QPushButton {{
+                min-height: 25px;
+                padding: 8px 16px;
+                border-radius: 10px;
+                font-size: {config.FONT_SIZE}px;
+                font-weight: 600;
+            }}
+            QPushButton[text="Yes"], QPushButton[text="OK"], QPushButton[text="Save and Close"], QPushButton[text="Load Data"], QPushButton[text="&Yes"] {{
+                background-color: rgb(0, 120, 215);
+                color: white;
+                border: 1px solid rgb(0, 120, 215);
+            }}
+            QPushButton[text="Yes"]:pressed, QPushButton[text="OK"]:pressed, QPushButton[text="Save and Close"]:pressed, QPushButton[text="Load Data"]:pressed, QPushButton[text="&Yes"]:pressed {{
+                background-color: rgb(0, 100, 180);
+            }}
+            QPushButton[text="No"], QPushButton[text="Cancel"], QPushButton[text="Reset to Defaults"], QPushButton[text="&No"] {{
+                background-color: rgb(58, 58, 58);
+                color: white;
+                border: 1px solid rgb(78, 78, 78);
+            }}
+            QPushButton[text="No"]:pressed, QPushButton[text="Cancel"]:pressed, QPushButton[text="Reset to Defaults"]:pressed, QPushButton[text="&No"]:pressed {{
+                background-color: rgb(92, 92, 92);
+            }}
+        """)
+
         return msg.exec()
 
 
@@ -226,8 +274,6 @@ class DSAApplication(QMainWindow):
 
     def _create_menu(self):
         menu = self.menuBar().addMenu("&Menu")
-
-        menu.addSeparator()
 
         action_settings = QAction("DSA Settings", self)
         action_settings.triggered.connect(self._open_settings)
@@ -263,12 +309,12 @@ class DSAApplication(QMainWindow):
 
         self.connection_indicator = QLabel("●")
         self.connection_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.connection_indicator.setFixedSize(30, 30)
+        self.connection_indicator.setFixedSize(24, 24)
 
         self.connection_indicator.setStyleSheet("""
             QLabel {
                 color: red;
-                font-size: 22px;
+                font-size: 18px;
             }
         """)
 
@@ -345,10 +391,10 @@ class DSAApplication(QMainWindow):
 
     def _update_status(self):
         if time.time() - self._last_data_receive_time < 2.0:
-            self.connection_indicator.setStyleSheet("QLabel { color: green; font-size: 22px; }")
+            self.connection_indicator.setStyleSheet("QLabel { color: green; font-size: 18px; }")
             self.connection_indicator.setToolTip("Connected")
         else:
-            self.connection_indicator.setStyleSheet("QLabel { color: red; font-size: 22px; }")
+            self.connection_indicator.setStyleSheet("QLabel { color: red; font-size: 18px; }")
             self.connection_indicator.setToolTip("Disconnected")
 
         self.topbar.update_jump_live_btn(self.dsa_view)

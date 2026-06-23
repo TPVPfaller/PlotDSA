@@ -90,7 +90,7 @@ def test_buffer_t0_is_snapped_to_time_resolution():
 
     buf.append(1000.17, psd)
 
-    assert buf.t0 == 1000.1
+    assert buf.t0 == 1000.0
 
 
 def test_finest_resolution_overwrites_within_same_time_slot():

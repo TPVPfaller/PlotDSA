@@ -33,7 +33,7 @@ class TimeSelectionDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Start Time")
-        self.setMinimumSize(400, 350)
+        self.setMinimumSize(400, 250)
 
         self._reference_now = self._normalize_datetime(dt.now())
         self._selected_dt = self._default_datetime()
@@ -51,28 +51,27 @@ class TimeSelectionDialog(QDialog):
                 color: white;
             }}
             QFrame#pickerSection {{
-                border: 1px solid palette(mid);
+                border: 1px solid rgb(78, 78, 78);
                 border-radius: 12px;
-                background: palette(alternate-base);
-            }}
-            QLabel#pickerPreview {{
-                border-radius: 12px;
-                padding: 12px 16px;
-                background: palette(alternate-base);
-                font-size: {config.FONT_SIZE + 4}px;
-                font-weight: 600;
-                color: white;
+                background: rgb(40, 40, 40);
             }}
             QPushButton#presetButton {{
-                min-height: 48px;
-                padding: 8px 16px;
-                border-radius: 10px;
+                background-color: rgb(58, 58, 58);
                 color: white;
-                font-size: {config.FONT_SIZE + 2}px;
+                border: 1px solid rgb(78, 78, 78);
+                border-radius: 10px;
+                padding: 8px 16px;
+                font-size: {config.FONT_SIZE}px;
+                text-align: center;
+                min-height: 25px;
+                font-weight: 600;
             }}
-            QPushButton#presetButton:hover {{
-                background: palette(highlight);
-                color: palette(highlighted-text);
+            QPushButton#presetButton:pressed {{
+                background-color: rgb(92, 92, 92);
+            }}
+            QPushButton#presetButton:disabled {{
+                background-color: rgb(48, 48, 48);
+                color: rgb(150, 150, 150);
             }}
             QSlider {{
                 background: transparent;
@@ -104,22 +103,42 @@ class TimeSelectionDialog(QDialog):
                 background: rgb(250, 252, 255);
                 border: 2px solid rgb(92, 98, 106);
             }}
-            QSlider::handle:horizontal:hover {{
-                background: rgb(255, 255, 255);
-            }}
             QSlider::handle:horizontal:pressed {{
                 background: rgb(228, 231, 236);
             }}
-            QLabel#timeDisplay {{
+            QLabel#pickerPreview {{
                 padding: 10px;
-                font-size: {config.FONT_SIZE + 14}px;
+                font-size: {config.FONT_SIZE + 4}px;
                 font-weight: 700;
                 color: white;
+            }}
+            QDialogButtonBox QPushButton {{
+                min-height: 25px;
+                padding: 8px 16px;
+                border-radius: 10px;
+                font-size: {config.FONT_SIZE}px;
+                font-weight: 600;
+            }}
+            QPushButton[text="Cancel"] {{
+                background-color: rgb(58, 58, 58);
+                color: white;
+                border: 1px solid rgb(78, 78, 78);
+            }}
+            QPushButton[text="Cancel"]:pressed {{
+                background-color: rgb(92, 92, 92);
+            }}
+            QPushButton[text="Load Data"] {{
+                background-color: rgb(0, 120, 215);
+                color: white;
+                border: 1px solid rgb(0, 120, 215);
+            }}
+            QPushButton[text="Load Data"]:pressed {{
+                background-color: rgb(0, 100, 180);
             }}
         """)
 
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(24, 24, 24, 24)
+        root_layout.setContentsMargins(12, 5, 12, 12)
         root_layout.setSpacing(12)
 
         # Split presets into two rows if needed, but for touchscreen let's use a flow or just one big row/grid
@@ -140,13 +159,12 @@ class TimeSelectionDialog(QDialog):
         slider_frame = QFrame()
         slider_frame.setObjectName("pickerSection")
         slider_layout = QVBoxLayout(slider_frame)
-        slider_layout.setContentsMargins(20, 20, 20, 20)
-        slider_layout.setSpacing(15)
-
-        self.time_display = QLabel()
-        self.time_display.setObjectName("timeDisplay")
-        self.time_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        slider_layout.addWidget(self.time_display)
+        slider_layout.setContentsMargins(10, 10, 10, 10)
+        slider_layout.setSpacing(0)
+        self.preview_label = QLabel()
+        self.preview_label.setObjectName("pickerPreview")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        slider_layout.addWidget(self.preview_label)
 
         self.ago_slider = QSlider(Qt.Orientation.Horizontal)
         self.ago_slider.setRange(0, 24)
@@ -159,21 +177,38 @@ class TimeSelectionDialog(QDialog):
 
         root_layout.addWidget(slider_frame)
 
-        # Preview
-        self.preview_label = QLabel()
-        self.preview_label.setObjectName("pickerPreview")
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root_layout.addWidget(self.preview_label)
-
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
+        button_box.setStyleSheet(f"""
+            QDialogButtonBox QPushButton {{
+                min-height: 25px;
+                padding: 8px 16px;
+                border-radius: 10px;
+                font-size: {config.FONT_SIZE}px;
+                font-weight: 600;
+            }}
+            QPushButton[text="Cancel"] {{
+                background-color: rgb(58, 58, 58);
+                color: white;
+                border: 1px solid rgb(78, 78, 78);
+            }}
+            QPushButton[text="Cancel"]:pressed {{
+                background-color: rgb(92, 92, 92);
+            }}
+            QPushButton[text="Load Data"] {{
+                background-color: rgb(0, 120, 215);
+                color: white;
+                border: 1px solid rgb(0, 120, 215);
+            }}
+            QPushButton[text="Load Data"]:pressed {{
+                background-color: rgb(0, 100, 180);
+            }}
+        """)
         self.load_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
         self.load_button.setText("Load Data")
-        self.load_button.setMinimumHeight(40)
         self.load_button.setMinimumWidth(150)
 
         cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
-        cancel_button.setMinimumHeight(40)
         cancel_button.setMinimumWidth(150)
 
         button_box.accepted.connect(self.accept)
@@ -209,7 +244,6 @@ class TimeSelectionDialog(QDialog):
         hours_ago = self._hours_ago(normalized, self._reference_now)
         self._set_hours_ago(hours_ago)
 
-        self._update_time_display(hours_ago)
         self._refresh_preview(normalized)
 
     def _sync_from_slider(self, hours_ago):
@@ -218,7 +252,6 @@ class TimeSelectionDialog(QDialog):
 
         selected_dt = self._reference_now - datetime.timedelta(hours=hours_ago)
         self._selected_dt = selected_dt
-        self._update_time_display(hours_ago)
         self._refresh_preview(selected_dt)
 
     def _refresh_preview(self, selected_dt):
@@ -229,7 +262,10 @@ class TimeSelectionDialog(QDialog):
         if total_minutes < 1:
             relative = "just now"
         elif hours:
-            relative = f"{hours}h {minutes:02d}m ago"
+            if minutes == 0:
+                relative = f"{hours}h ago"
+            else:
+                relative = f"{hours}h {minutes:02d}m ago"
         else:
             relative = f"{minutes}m ago"
 
@@ -237,12 +273,3 @@ class TimeSelectionDialog(QDialog):
 
     def selected_datetime(self):
         return self._selected_dt
-
-    def _update_time_display(self, hours_ago):
-        if hours_ago == 0:
-            text = "Now"
-        elif hours_ago == 1:
-            text = "1 hour ago"
-        else:
-            text = f"{hours_ago} hours ago"
-        self.time_display.setText(text)

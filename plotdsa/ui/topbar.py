@@ -41,7 +41,7 @@ class TopBar(QWidget):
         self.GAMMA = 2.5 # Zoom shape parameter
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 0, 8, 2)
         layout.setSpacing(10)
 
         self.left_btn = self._create_arrow_button("left")
@@ -96,9 +96,6 @@ class TopBar(QWidget):
                 background: rgb(250, 252, 255);
                 border: 2px solid rgb(92, 98, 106);
             }}
-            QSlider::handle:horizontal:hover {{
-                background: rgb(255, 255, 255);
-            }}
             QSlider::handle:horizontal:pressed {{
                 background: rgb(228, 231, 236);
             }}
@@ -127,9 +124,6 @@ class TopBar(QWidget):
                 padding: {padding};
                 font-size: {resolved_font_size}px;
                 text-align: center;
-            }}
-            QPushButton:hover {{
-                background-color: rgb(72, 72, 72);
             }}
             QPushButton:pressed {{
                 background-color: rgb(92, 92, 92);

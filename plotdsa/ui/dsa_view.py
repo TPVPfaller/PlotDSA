@@ -46,7 +46,7 @@ class FrequencyAxis(pg.AxisItem):
             major_ticks.append(float(v))
             v += spacing
 
-        major_ticks = [t for t in major_ticks if abs(t - self.max_freq) > spacing * 0.7]
+        major_ticks = [t for t in major_ticks if abs(t - self.max_freq) > spacing * 0.5]
         major_ticks.append(float(self.max_freq))
         major_ticks = sorted(set(t for t in major_ticks if math.isfinite(t)))
 
@@ -101,7 +101,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         self.plot.invertY(False)
         self.plot.setMouseEnabled(x=False, y=False)
         self._update_y_axis()
-        self.plot.setContentsMargins(0, 10, 0, 0)
+        self.plot.setContentsMargins(0, 0, 0, 0)
         self.image = pg.ImageItem(axisOrder="col-major", interpolation="linear")
         self.plot.addItem(self.image)
 
@@ -120,9 +120,6 @@ class DSAView(pg.GraphicsLayoutWidget):
                 border-radius: 4px;
                 font-weight: bold;
                 font-size: {config.FONT_SIZE + 6}px;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(80, 80, 80, 200);
             }}
             QPushButton:pressed {{
                 background-color: rgba(100, 100, 100, 255);
@@ -190,9 +187,6 @@ class DSAView(pg.GraphicsLayoutWidget):
                 border: 1px solid rgba(255, 255, 255, 45);
                 border-radius: 16px;
             }
-            QToolButton:hover {
-                background-color: rgba(80, 80, 80, 220);
-            }
             QToolButton:pressed {
                 background-color: rgba(100, 100, 100, 255);
             }
@@ -229,9 +223,6 @@ class DSAView(pg.GraphicsLayoutWidget):
                 padding: 0px;
                 text-align: center;
             }}
-            QPushButton:hover {{
-                background-color: rgba(80, 80, 80, 210);
-            }}
             QPushButton:disabled {{
                 background-color: rgba(45, 45, 45, 120);
                 color: rgba(255, 255, 255, 80);
@@ -240,17 +231,17 @@ class DSAView(pg.GraphicsLayoutWidget):
                 border-radius: 4px;
                 font-size: {max(config.FONT_SIZE - 1, 8)}px;
                 font-weight: bold;
-                padding: 6px 8px;
+                padding: 2px 8px;
             }}
         """
         )
 
         popup_layout = QVBoxLayout(self.settings_popup)
-        popup_layout.setContentsMargins(10, 10, 10, 10)
+        popup_layout.setContentsMargins(10, 4, 10, 4)
         popup_layout.setSpacing(8)
         popup_layout.addLayout(
             self._create_step_control_row(
-                "Max Freq",
+                "Max Frequency",
                 "max_freq_hz",
                 lambda value: f"{value} Hz",
                 lambda: self._adjust_max_freq(-1),
@@ -284,16 +275,15 @@ class DSAView(pg.GraphicsLayoutWidget):
             self._app_event_filter_installed = True
 
     def _create_step_control_row(self, title, field_name, formatter, minus_handler, plus_handler):
-        from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
-
-        block = QVBoxLayout()
-        block.setContentsMargins(0, 0, 0, 0)
-        block.setSpacing(4)
-        block.addWidget(QLabel(title))
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(6)
+        row.setSpacing(8)
+
+        title_label = QLabel(title)
+        row.addWidget(title_label)
+        row.addStretch()
 
         stepper_font = QFont()
         stepper_font.setBold(True)
@@ -301,7 +291,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         minus_button = QPushButton("-")
         minus_button.setProperty("role", "stepper")
-        minus_button.setFixedSize(36, 36)
+        minus_button.setFixedSize(45, 30)
         minus_button.setFont(stepper_font)
         minus_button.setText("")
         minus_button.setIcon(create_stepper_icon("minus"))
@@ -318,7 +308,7 @@ class DSAView(pg.GraphicsLayoutWidget):
 
         plus_button = QPushButton("+")
         plus_button.setProperty("role", "stepper")
-        plus_button.setFixedSize(36, 36)
+        plus_button.setFixedSize(45, 30)
         plus_button.setFont(stepper_font)
         plus_button.setText("")
         plus_button.setIcon(create_stepper_icon("plus"))
@@ -327,8 +317,7 @@ class DSAView(pg.GraphicsLayoutWidget):
         row.addWidget(plus_button)
         self.dsa_stepper_buttons[field_name] = (minus_button, plus_button)
 
-        block.addLayout(row)
-        return block
+        return row
 
     def _sync_settings_labels(self):
         for field_name, (label, formatter) in self.dsa_value_labels.items():

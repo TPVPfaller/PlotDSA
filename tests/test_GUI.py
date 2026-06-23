@@ -169,13 +169,15 @@ def test_load_data_uses_fractional_duration_to_append_expected_dsa_steps(dsa_app
 
     monkeypatch.setattr(
         "main.Output.load_psd_from_time",
-        lambda start_time_dt: [(1000.0, 3 * 0.1, psd)]
+        lambda start_time_dt: [(1000.0, 3 * config.TIME_RESOLUTION, psd)]
     )
     monkeypatch.setattr(dsa_app.dsa_view, "append", lambda ts, loaded_psd: appended.append((ts, loaded_psd)))
 
     dsa_app._load_data_from_time(time.time())
 
-    assert [ts for ts, _ in appended] == pytest.approx([1000.0, 1000.1, 1000.2])
+    assert [ts for ts, _ in appended] == pytest.approx(
+        [1000.0 + i * config.TIME_RESOLUTION for i in range(3)]
+    )
 
 
 def test_load_data_rounds_short_duration_up_to_one_dsa_step(dsa_app, monkeypatch):

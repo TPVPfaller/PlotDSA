@@ -66,9 +66,10 @@ def test_run_emits_samples_and_saves_generated_columns(monkeypatch):
     assert emitted_samples == [[1.0]]
     assert len(emitted_columns) == 1
     assert emitted_columns[0][0] == 123.0
-    assert emitted_columns[0][2] == 10
+    expected_steps = int(round(1.0 / config.TIME_RESOLUTION))
+    assert emitted_columns[0][2] == expected_steps
     assert saved_calls[0][1][0] == 123.0
-    assert saved_calls[0][1][1] == 10 * config.TIME_RESOLUTION
+    assert saved_calls[0][1][1] == expected_steps * config.TIME_RESOLUTION
 
 
 def test_discretize_dsa_column_keeps_continuous_one_second_hops_contiguous(monkeypatch):
@@ -77,15 +78,16 @@ def test_discretize_dsa_column_keeps_continuous_one_second_hops_contiguous(monke
     worker = ProcessingWorker(UserConfig(window_sec=2, window_overlap=0.5))
 
     emitted = [
-        worker._discretize_dsa_column(1000.9 + i * 1.0)
+        worker._discretize_dsa_column(1000.26 + i * 1.0)
         for i in range(4)
     ]
 
+    # snaps to time grid
     expected = [
-        (1000.9, 10),
-        (1001.9, 10),
-        (1002.9, 10),
-        (1003.9, 10),
+            (1000.25, int(round(1.0 / config.TIME_RESOLUTION))),
+            (1001.25, int(round(1.0 / config.TIME_RESOLUTION))),
+            (1002.25, int(round(1.0 / config.TIME_RESOLUTION))),
+            (1003.25, int(round(1.0 / config.TIME_RESOLUTION))),
     ]
     for (actual_ts, actual_steps), (expected_ts, expected_steps) in zip(emitted, expected):
         assert actual_ts == pytest.approx(expected_ts)

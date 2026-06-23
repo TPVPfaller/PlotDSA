@@ -103,9 +103,6 @@ class EEGView(pg.PlotWidget):
                 border: 1px solid rgba(255, 255, 255, 45);
                 border-radius: 16px;
             }
-            QToolButton:hover {
-                background-color: rgba(80, 80, 80, 220);
-            }
             QToolButton:pressed {
                 background-color: rgba(100, 100, 100, 255);
             }
@@ -123,9 +120,6 @@ class EEGView(pg.PlotWidget):
                 background-color: rgba(60, 60, 60, 170);
                 border: 1px solid rgba(255, 255, 255, 45);
                 border-radius: 16px;
-            }
-            QToolButton:hover {
-                background-color: rgba(80, 80, 80, 220);
             }
             QToolButton:pressed {
                 background-color: rgba(100, 100, 100, 255);
@@ -209,9 +203,6 @@ class EEGView(pg.PlotWidget):
                     border-radius: 4px;
                     font-weight: bold;
                     font-size: {max(config.FONT_SIZE - 3, 8)}px;
-                }}
-                QPushButton:hover {{
-                    background-color: rgba(80, 80, 80, 210);
                 }}
                 QPushButton:checked {{
                     background-color: rgba(0, 150, 220, 220);
