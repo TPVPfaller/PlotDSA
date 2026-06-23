@@ -26,11 +26,11 @@ EEG_SWEEP_SPEED: float = 25.0
 EEG_SWEEP_SPEED_OPTIONS: Tuple[float, ...] = (12.5, 25.0, 50.0)
 EEG_Y_RANGE_OPTIONS: Tuple[int, ...] = (50, 100, 150)
 EEG_UV_RANGE_MAX: int = 50
-MIN_DSA_HEIGHT: int = 180
+MIN_DSA_HEIGHT: int = 150
 MIN_PSD_HEIGHT: int = 30
-MIN_EEG_HEIGHT: int = 145
-MIN_WINDOW_WIDTH: int = 800
-MIN_WINDOW_HEIGHT: int = 450
+MIN_EEG_HEIGHT: int = 130
+MIN_WINDOW_WIDTH: int = 600
+MIN_WINDOW_HEIGHT: int = 410
 N_PER_SEGMENT: int = SAMPLE_RATE_HZ * 2 # 2 second segments for PSD
 FONT_SIZE = 18
 TEXT_COLOR_STR = "#D1D1D1"
@@ -50,7 +50,6 @@ DISPLAY_MINUTES_BOUNDS: Tuple[float, float] = (0.5, 60.0*24.0*1) # 1 day limit t
 MAX_FREQ_HZ_BOUNDS: Tuple[int, int] = (20, 47)
 PSD_DB_MIN_BOUNDS: Tuple[int, int] = (-50, 0)
 PSD_DB_MAX_BOUNDS: Tuple[int, int] = (0, 50)
-EEG_BOUNDS: Tuple[int, int] = (-250, 250)
 USE_MULTITAPER: bool = True
 
 _all_freq_bins = np.fft.rfftfreq(N_PER_SEGMENT, d=1 / SAMPLE_RATE_HZ)

@@ -153,7 +153,7 @@ class EEGView(pg.PlotWidget):
         )
 
         popup_layout = QVBoxLayout(self.settings_popup)
-        popup_layout.setContentsMargins(10, 10, 10, 10)
+        popup_layout.setContentsMargins(10, 2, 10, 6)
         popup_layout.setSpacing(8)
 
         popup_layout.addWidget(QLabel("Sweep Speed"))

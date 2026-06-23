@@ -46,7 +46,7 @@ class FrequencyAxis(pg.AxisItem):
             major_ticks.append(float(v))
             v += spacing
 
-        major_ticks = [t for t in major_ticks if abs(t - self.max_freq) > spacing * 0.5]
+        major_ticks = [t for t in major_ticks if abs(t - self.max_freq) > spacing * 0.6]
         major_ticks.append(float(self.max_freq))
         major_ticks = sorted(set(t for t in major_ticks if math.isfinite(t)))
 

@@ -27,7 +27,7 @@ def create_reset_icon(size=18):
 
 # ------------------ TopBar ------------------ #
 class TopBar(QWidget):
-    BUTTON_HEIGHT = 42
+    BUTTON_HEIGHT = 35
     ZOOM_SLIDER_MAX = 1000
 
     def __init__(self, user_config, on_config_change, on_zoom_change, on_pan, on_calibrate):
@@ -113,15 +113,16 @@ class TopBar(QWidget):
         self.reset_btn.clicked.connect(self._reset_calibration)
         layout.addWidget(self.reset_btn)
 
-    def _button_style(self, font_size=None, padding="8px 12px"):
+    def _button_style(self, font_size=None, padding=None):
         resolved_font_size = config.FONT_SIZE if font_size is None else font_size
+        resolved_padding = padding if padding is not None else "0px 12px"
         return f"""
             QPushButton {{
                 background-color: rgb(58, 58, 58);
                 color: white;
                 border: 1px solid rgb(78, 78, 78);
                 border-radius: 6px;
-                padding: {padding};
+                padding: {resolved_padding};
                 font-size: {resolved_font_size}px;
                 text-align: center;
             }}
@@ -134,7 +135,7 @@ class TopBar(QWidget):
             }}
         """
 
-    def _create_button(self, text="", font_size=None, padding="8px 12px", min_width=None):
+    def _create_button(self, text="", font_size=None, padding=None, min_width=None):
         button = QPushButton(text)
         button.setMinimumHeight(self.BUTTON_HEIGHT)
         if min_width is not None:
@@ -143,7 +144,7 @@ class TopBar(QWidget):
         return button
 
     def _create_arrow_button(self, direction):
-        button = self._create_button("", padding="0px", min_width=self.BUTTON_HEIGHT)
+        button = self._create_button("", padding="0px", min_width=42)
         button.setIcon(self._create_arrow_icon(direction))
         button.setIconSize(QSize(16, 16))
         return button

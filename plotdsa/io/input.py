@@ -50,9 +50,6 @@ class EEGStream:
                 if not np.isfinite(value):
                     print(f"Non-finite EEG value: {value} at {timestamp}")
                     value = np.nan
-                elif value < config.EEG_BOUNDS[0] or value > config.EEG_BOUNDS[1]:
-                    print(f"Out of bounds: {value}")
-                    value = np.nan
 
                 samples.append((timestamp, value))
             except Exception as e:

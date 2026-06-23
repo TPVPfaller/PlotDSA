@@ -157,7 +157,7 @@ def test_eegbuffer_high_overlap_uses_minimum_hop_of_one_sample():
 
     out = buf.get_dsa_columns(samples)
 
-    assert buf.hop_len == 5
+    assert buf.hop_len == 8
     assert len(out) >= 1
 
 

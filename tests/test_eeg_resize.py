@@ -37,14 +37,14 @@ def test_update_time_scale_reuses_latest_history_samples(app, monkeypatch):
     monkeypatch.setattr(view, "window", lambda: FakeWindow())
     monkeypatch.setattr(view, "getViewBox", lambda: FakeViewBox())
 
-    view.history.extend(float(i) for i in range(100))
-    view.display_head = 499
+    view.history.extend(float(i) for i in range(200))
+    view.display_head = 168
 
     view._update_time_scale()
 
-    assert view.N == 176
-    assert view.display[87] == 99.0
-    assert view.display[86] == 98.0
+    assert view.N == 169
+    assert view.display[view.display_head] == 199.0
+    assert view.display[view.display_head - 1] == 198.0
 
 
 def test_update_time_scale_ignores_tiny_viewports(app, monkeypatch):

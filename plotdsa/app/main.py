@@ -114,9 +114,9 @@ class DSAApplication(QMainWindow):
 
     def eventFilter(self, obj, event):
         if (
-            event.type() == QEvent.Type.Show
-            and isinstance(obj, QWidget)
-            and obj.isWindow()
+                event.type() == QEvent.Type.Show
+                and isinstance(obj, QWidget)
+                and obj.isWindow()
         ):
             window_id = int(obj.winId())
             if window_id not in self._themed_window_ids:
@@ -136,7 +136,8 @@ class DSAApplication(QMainWindow):
         self.psd_view = PSDView(self.user_config)
         self.eeg_view = EEGView(self.user_config, self._on_config_change)
 
-        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan, self.dsa_view.calibrate)
+        self.topbar = TopBar(self.user_config, self._on_config_change, self._on_zoom_change, self.dsa_view.pan,
+                             self.dsa_view.calibrate)
         self._create_menu()
 
         container = QWidget()
@@ -253,7 +254,6 @@ class DSAApplication(QMainWindow):
 
         return msg.exec()
 
-
     def _init_worker(self):
         self.thread = QThread()
         self.worker = ProcessingWorker(self.user_config)
@@ -307,14 +307,15 @@ class DSAApplication(QMainWindow):
         action_info.triggered.connect(self._show_information)
         help_menu.addAction(action_info)
 
-        self.connection_indicator = QLabel("●")
+        self.connection_indicator = QLabel()
+        self.connection_indicator.setFixedSize(12, 12)
         self.connection_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.connection_indicator.setFixedSize(24, 24)
-
         self.connection_indicator.setStyleSheet("""
-            QLabel {
-                color: red;
-                font-size: 18px;
+            QLabel { 
+            background-color: red; 
+            border: none; 
+            border-radius: 6px; 
+            padding: 0px 6px;
             }
         """)
 
@@ -329,7 +330,7 @@ class DSAApplication(QMainWindow):
             - PSD files are saved in: <code>{config.BASE_DIR}</code>
         </p>
         <p style="font-size:12pt;">
-            - Viewer supports up to <b>{int(config.DISPLAY_MINUTES_BOUNDS[1]/60)} hours</b> of EEG data
+            - Viewer supports up to <b>{int(config.DISPLAY_MINUTES_BOUNDS[1] / 60)} hours</b> of EEG data
         </p>
         <p style="font-size:12pt;">
             - EEG should arrive at <b>{config.SAMPLE_RATE_HZ} Hz</b>
@@ -372,7 +373,6 @@ class DSAApplication(QMainWindow):
         dialog = SettingsDialog(self.user_config, self._on_config_change, self)
         dialog.exec()
 
-
     def _on_new_dsa_column(self, ts, psd, steps):
         self._append_dsa_steps(ts, psd, steps)
         self.dsa_view.update()
@@ -388,13 +388,26 @@ class DSAApplication(QMainWindow):
         for value in samples:
             self.eeg_view.append_sample(value)
 
-
     def _update_status(self):
         if time.time() - self._last_data_receive_time < 2.0:
-            self.connection_indicator.setStyleSheet("QLabel { color: green; font-size: 18px; }")
+            self.connection_indicator.setStyleSheet("""
+            QLabel { 
+            background-color: green; 
+            border: none; 
+            border-radius: 6px; 
+            padding: 0px 6px;
+            }
+        """)
             self.connection_indicator.setToolTip("Connected")
         else:
-            self.connection_indicator.setStyleSheet("QLabel { color: red; font-size: 18px; }")
+            self.connection_indicator.setStyleSheet("""
+            QLabel { 
+            background-color: red; 
+            border: none; 
+            border-radius: 6px; 
+            padding: 0px 6px;
+             }
+        """)
             self.connection_indicator.setToolTip("Disconnected")
 
         self.topbar.update_jump_live_btn(self.dsa_view)
