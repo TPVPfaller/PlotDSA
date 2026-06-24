@@ -4,7 +4,7 @@ PlotDSA is a PySide6 application for real-time EEG visualization, featuring a sc
 
 ## Quick Start
 ```powershell
-git clone <your-repo-url>
+git clone https://github.com/TPVPfaller/PlotDSA.git
 cd PlotDSA
 ```
 ```powershell
@@ -21,11 +21,19 @@ python -m plotdsa.app.main
 
 ## Key Features
 - **Real-time Visualization**: Heatmap (frequency vs. time) and raw EEG trace via the `EEG_DATA` LSL stream.
-- **Configurable Settings**: Adjust analysis window, overlap, and max frequency in-app.
-- **Data Export**: Saves computed PSD data to CSV under `C:\temp\VSCaptureWave`.
+- **Configurable Settings**:
+  - Welch/Multitaper
+  - FFT Window Size
+  - FFT Window Overlap
+  - DSA Color Mapping
+  - Maximum Frequency
+  - EEG Sweep Speed
+- **Data Export/Import**: Saves computed PSD data to CSV under `C:\temp\VSCaptureWave\DSA_Data` (maximum of 24h). Import PSD data with the "Load Data from Time" option.
+- **Execution**: Start-DSA-Layout.cmd launches the application with AnesthesiaUI. DSA.exe and VSCaptureWave.exe should
+be located in C:\temp\VSCaptureWave. 
 
 ## Development
-- **Requirements**: Python 3.11, Windows (primary target).
+- **Requirements**: Python 3.11, Windows 10 (primary target).
 - **Tests**: Run `pytest -q`.
 - **Build**: Use Nuitka to produce a Windows executable.
 
